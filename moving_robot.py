@@ -37,7 +37,7 @@ def spawn_random_object():
 
     # Random size
     if shape_type == "box":
-        half_extents = [random.uniform(0.05, 0.2) for _ in range(3)]
+        half_extents = [random.uniform(0.1, 0.2) for _ in range(3)]
         collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents)
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
@@ -45,7 +45,7 @@ def spawn_random_object():
             rgbaColor=[random.random(), random.random(), random.random(), 1],
         )
     elif shape_type == "sphere":
-        radius = random.uniform(0.05, 0.2)
+        radius = random.uniform(0.1, 0.2)
         collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=radius)
         visual_shape = p.createVisualShape(
             p.GEOM_SPHERE,
@@ -53,8 +53,8 @@ def spawn_random_object():
             rgbaColor=[random.random(), random.random(), random.random(), 1],
         )
     else:  # cylinder
-        radius = random.uniform(0.05, 0.15)
-        height = random.uniform(0.05, 0.3)
+        radius = random.uniform(0.1, 0.2)
+        height = random.uniform(0.1, 0.2)
         collision_shape = p.createCollisionShape(
             p.GEOM_CYLINDER, radius=radius, height=height
         )
@@ -66,11 +66,11 @@ def spawn_random_object():
         )
 
     # Random position on the floor
-    pos = [random.uniform(-10, 10), random.uniform(-3, 3), 0.2]
+    pos = [random.uniform(-5, 5), random.uniform(-5, 5), 0.25]
     orientation = p.getQuaternionFromEuler([0, 0, random.uniform(0, 3.14)])
 
     # Mass > 0 to make it dynamic
-    mass = random.uniform(0.5, 2)
+    mass = random.uniform(1, 5)
 
     # Create the object
     body_id = p.createMultiBody(
@@ -255,7 +255,7 @@ with PyBulletSim(gui=True) as client:
 
         # Foward and backward movement E/D
         if ord("e") in keys and keys[ord("e")] & p.KEY_IS_DOWN:  # forward
-            wheel_target_velocities = [-30, -30, -30, -30]
+            wheel_target_velocities = [-25, -25, -25, -25]
             forces = [8, 8, 8, 8]
             # print("FORCE", force, orn_mat[:, 1], p.LINK_FRAME)
             # p.applyExternalForce(
@@ -266,8 +266,16 @@ with PyBulletSim(gui=True) as client:
             moved = True
 
         elif ord("d") in keys and keys[ord("d")] & p.KEY_IS_DOWN:  # backward
-            wheel_target_velocities = [20, 20, 20, 20]
+            wheel_target_velocities = [25, 25, 25, 25]
             forces = [8, 8, 8, 8]
+            moved = True
+        elif ord("j") in keys and keys[ord("j")] & p.KEY_IS_DOWN:
+            wheel_target_velocities = [-50, -50, 50, 50]
+            forces = [20, 20, 20, 20]
+            moved = True
+        elif ord("l") in keys and keys[ord("l")] & p.KEY_IS_DOWN:
+            wheel_target_velocities = [50, 50, -50, -50]
+            forces = [20, 20, 20, 20]
             moved = True
         else:
             wheel_target_velocities = [0, 0, 0, 0]
