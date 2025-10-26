@@ -218,8 +218,13 @@ with PyBulletSim(gui=True) as client:
     move_force_newtons = 1000.0  # forward/backward step
     turn_speed = 0.05  # radians per step
     frame = 0
+    wheel_current_velocities = [0, 0, 0, 0]
+    wheel_target_velocities = [0, 0, 0, 0]  # Radians / S
     for i in range(10000):
         frame += 1
+
+        wheel_target_velocities = [0, 0, 0, 0]
+
         keys = p.getKeyboardEvents()
         pos, orn = p.getBasePositionAndOrientation(r2d2_id)
         pos_x, pos_y, pos_z = pos
@@ -249,19 +254,9 @@ with PyBulletSim(gui=True) as client:
         # forward_y = 1 - 2*(orn[0]**2 + orn[2]**2)
 
         # Foward and backward movement E/D
-        if ord("e") in keys:  # forward
-            force = move_force_newtons * orn_mat[:, 1]
-            p.setJointMotorControlArray(
-                r2d2_id,
-                [
-                    RIGHT_FRONT_WHEEL,
-                    RIGHT_BACK_WHEEL,
-                    LEFT_FRONT_WHEEL,
-                    LEFT_BACK_WHEEL,
-                ],
-                p.VELOCITY_CONTROL,
-                targetVelocities=[20, 20, 20, 20],
-            )
+        if ord("e") in keys and keys[ord("e")] & p.KEY_IS_DOWN:  # forward
+            wheel_target_velocities = [-30, -30, -30, -30]
+            forces = [8, 8, 8, 8]
             # print("FORCE", force, orn_mat[:, 1], p.LINK_FRAME)
             # p.applyExternalForce(
             #     r2d2_id, -1, forceObj=force, posObj=pos, flags=p.WORLD_FRAME
@@ -270,7 +265,13 @@ with PyBulletSim(gui=True) as client:
             # pos_y += move_speed * forward_y
             moved = True
 
-        # if ord('d') in keys:  # backward
+        elif ord("d") in keys and keys[ord("d")] & p.KEY_IS_DOWN:  # backward
+            wheel_target_velocities = [20, 20, 20, 20]
+            forces = [8, 8, 8, 8]
+            moved = True
+        else:
+            wheel_target_velocities = [0, 0, 0, 0]
+            forces = [2, 2, 2, 2]
         #     pos_x -= move_speed * forward_x
         #     pos_y -= move_speed * forward_y
         #     moved = True
@@ -281,6 +282,21 @@ with PyBulletSim(gui=True) as client:
         #     p.applyExternalForce(r2d2_id, -1, forceObj=[F_x, F_y, F_z], posObj=[0,0,0], flags=p.WORLD_FRAME)
         # if moved:
         #     p.resetBasePositionAndOrientation(r2d2_id, [pos_x, pos_y, pos_z], orn)
+
+        if wheel_target_velocities != wheel_current_velocities:
+            p.setJointMotorControlArray(
+                r2d2_id,
+                [
+                    RIGHT_FRONT_WHEEL,
+                    RIGHT_BACK_WHEEL,
+                    LEFT_FRONT_WHEEL,
+                    LEFT_BACK_WHEEL,
+                ],
+                p.VELOCITY_CONTROL,
+                targetVelocities=wheel_target_velocities,
+                forces=forces,
+            )
+            wheel_current_velocities = wheel_target_velocities
 
         if frame % 3 == 0:  # every 10th frame → ~24 FPS equivalent
             view, proj = get_head_camera_view(r2d2_id, HEAD_BOX_LINK)
