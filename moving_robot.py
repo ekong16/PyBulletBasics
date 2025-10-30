@@ -88,6 +88,14 @@ def print_dynamics_info(body_id):
     """
     Prints mass, local inertia, friction, damping, etc. for each link (and base).
     """
+    JOINT_TYPES = {
+        p.JOINT_REVOLUTE: "REVOLUTE",
+        p.JOINT_PRISMATIC: "PRISMATIC",
+        p.JOINT_SPHERICAL: "SPHERICAL",
+        p.JOINT_PLANAR: "PLANAR",
+        p.JOINT_FIXED: "FIXED",
+    }
+
     rows = []
 
     # Base (link index = -1)
@@ -105,6 +113,12 @@ def print_dynamics_info(body_id):
             base_dyn[6],  # spinning friction
             base_dyn[7],  # contact damping
             base_dyn[8],  # contact stiffness
+            "",  # jointIndex
+            "",  # jointType
+            "",  # jointAxis
+            "",  # parentFramePos
+            "",  # parentFrameOrn
+            "",  # parentIndex
         ]
     )
 
@@ -126,6 +140,12 @@ def print_dynamics_info(body_id):
                 dyn[6],
                 dyn[7],
                 dyn[8],
+                info[0],  # jointIndex
+                JOINT_TYPES.get(info[2], str(info[2])),  # jointType
+                np.round(info[13], 3),  # jointAxis
+                np.round(info[14], 3),  # parentFramePos
+                np.round(info[15], 3),  # parentFrameOrn
+                info[16],  # parentIndex
             ]
         )
 
@@ -141,6 +161,12 @@ def print_dynamics_info(body_id):
         "Spin_Fric",
         "Contact_Damp",
         "Contact_Stiff",
+        "JointIdx",
+        "JointType",
+        "JointAxis",
+        "ParentPos",
+        "ParentOrn",
+        "ParentIdx",
     ]
 
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid", floatfmt=".3f"))
@@ -159,26 +185,10 @@ with PyBulletSim(gui=True) as client:
     startOrientation = p.getQuaternionFromEuler([0, 0, 0])
 
     r2d2_id = p.loadURDF("r2d2.urdf", startPos, startOrientation, useFixedBase=False)
-    # --- Inspect joints to find head link ---
     print_dynamics_info(r2d2_id)
-    print("\nR2D2 joints:")
-    for i in range(p.getNumJoints(r2d2_id)):
-        joint_info = p.getJointInfo(r2d2_id, i)
-        link_state = p.getLinkState(r2d2_id, i)
 
-        pos = np.round(link_state[0], 2)
-        orn = np.round(link_state[1], 2)
-        local_inertia_pos = np.round(link_state[2], 2)
-        local_inertia_orn = np.round(link_state[3], 2)
-        mass = joint_info[10]
-        name = joint_info[12].decode("utf-8")
-        print(
-            f"{i:2d} | {name:18s} | mass={mass:7.3f} | pos={pos} | inertia={local_inertia_pos}"
-        )
-
-        # print(f"id={i}, name={joint_info[12].decode('utf-8')}, LinkXYZ={np.round(link_state[0],2)}")
-
-    HEAD_BOX_LINK = 14  # Change this if your printout differs
+    HEAD_LINK = 13
+    HEAD_BOX_LINK = 14
     RIGHT_FRONT_WHEEL = 2
     RIGHT_BACK_WHEEL = 3
     LEFT_FRONT_WHEEL = 6
@@ -218,8 +228,10 @@ with PyBulletSim(gui=True) as client:
     move_force_newtons = 1000.0  # forward/backward step
     turn_speed = 0.05  # radians per step
     frame = 0
-    wheel_current_velocities = [0, 0, 0, 0]
+    wheel_current_target_velocities = [0, 0, 0, 0]
     wheel_target_velocities = [0, 0, 0, 0]  # Radians / S
+    head_current_velocity = 0
+    head_current_target_velocity = 0
     for i in range(10000):
         frame += 1
 
@@ -234,64 +246,26 @@ with PyBulletSim(gui=True) as client:
                 f"robotId: {r2d2_id}, robotBaseXYZ={np.round(pos, 2)} robotBaseOrnQuat: {np.round(orn, 2)}"
             )
 
-        # Turning (J/L)
-        moved = False
-        if ord("j") in keys:  # turn left
-            turn_quat = p.getQuaternionFromEuler([0, 0, turn_speed])
-            orn = p.multiplyTransforms([0, 0, 0], turn_quat, [0, 0, 0], orn)[1]
-            moved = True
-
-        if ord("l") in keys:  # turn right
-            turn_quat = p.getQuaternionFromEuler([0, 0, -turn_speed])
-            orn = p.multiplyTransforms([0, 0, 0], turn_quat, [0, 0, 0], orn)[1]
-            moved = True
-
-        # Forward vector from quaternion (local Y is forward)
-        # this is from the qauternion to euler matrix
-        orn_mat = np.array(p.getMatrixFromQuaternion(orn)).reshape(3, 3)
-
-        # forward_x = 2*(orn[0]*orn[1] - orn[3]*orn[2])
-        # forward_y = 1 - 2*(orn[0]**2 + orn[2]**2)
-
-        # Foward and backward movement E/D
         if ord("e") in keys and keys[ord("e")] & p.KEY_IS_DOWN:  # forward
             wheel_target_velocities = [-25, -25, -25, -25]
             forces = [8, 8, 8, 8]
-            # print("FORCE", force, orn_mat[:, 1], p.LINK_FRAME)
-            # p.applyExternalForce(
-            #     r2d2_id, -1, forceObj=force, posObj=pos, flags=p.WORLD_FRAME
-            # )
-            # pos_x += move_speed * forward_x
-            # pos_y += move_speed * forward_y
-            moved = True
 
         elif ord("d") in keys and keys[ord("d")] & p.KEY_IS_DOWN:  # backward
             wheel_target_velocities = [25, 25, 25, 25]
             forces = [8, 8, 8, 8]
-            moved = True
+
         elif ord("j") in keys and keys[ord("j")] & p.KEY_IS_DOWN:
             wheel_target_velocities = [-50, -50, 50, 50]
             forces = [20, 20, 20, 20]
-            moved = True
+
         elif ord("l") in keys and keys[ord("l")] & p.KEY_IS_DOWN:
             wheel_target_velocities = [50, 50, -50, -50]
             forces = [20, 20, 20, 20]
-            moved = True
         else:
             wheel_target_velocities = [0, 0, 0, 0]
             forces = [2, 2, 2, 2]
-        #     pos_x -= move_speed * forward_x
-        #     pos_y -= move_speed * forward_y
-        #     moved = True
 
-        # Update position and orientation
-        # print("Velocity", linear_velocity)
-        # if (moved):
-        #     p.applyExternalForce(r2d2_id, -1, forceObj=[F_x, F_y, F_z], posObj=[0,0,0], flags=p.WORLD_FRAME)
-        # if moved:
-        #     p.resetBasePositionAndOrientation(r2d2_id, [pos_x, pos_y, pos_z], orn)
-
-        if wheel_target_velocities != wheel_current_velocities:
+        if wheel_target_velocities != wheel_current_target_velocities:
             p.setJointMotorControlArray(
                 r2d2_id,
                 [
@@ -304,7 +278,23 @@ with PyBulletSim(gui=True) as client:
                 targetVelocities=wheel_target_velocities,
                 forces=forces,
             )
-            wheel_current_velocities = wheel_target_velocities
+            wheel_current_target_velocities = wheel_target_velocities
+
+        if ord("i") in keys and keys[ord("i")] & p.KEY_IS_DOWN:
+            head_current_target_velocity = 5
+        elif ord("k") in keys and keys[ord("k")] & p.KEY_IS_DOWN:
+            head_current_target_velocity = -5
+        else:
+            head_current_target_velocity = 0
+
+        if head_current_target_velocity != head_current_velocity:
+            p.setJointMotorControl2(
+                r2d2_id,
+                HEAD_LINK,
+                p.VELOCITY_CONTROL,
+                targetVelocity=head_current_target_velocity,
+            )
+            head_current_target_velocity = wheel_target_velocities
 
         if frame % 3 == 0:  # every 10th frame → ~24 FPS equivalent
             view, proj = get_head_camera_view(r2d2_id, HEAD_BOX_LINK)
