@@ -37,7 +37,7 @@ def spawn_random_object():
 
     # Random size
     if shape_type == "box":
-        half_extents = [random.uniform(0.1, 0.2) for _ in range(3)]
+        half_extents = [random.uniform(0.2, 0.3) for _ in range(3)]
         collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents)
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
@@ -45,7 +45,7 @@ def spawn_random_object():
             rgbaColor=[random.random(), random.random(), random.random(), 1],
         )
     elif shape_type == "sphere":
-        radius = random.uniform(0.1, 0.2)
+        radius = random.uniform(0.2, 0.3)
         collision_shape = p.createCollisionShape(p.GEOM_SPHERE, radius=radius)
         visual_shape = p.createVisualShape(
             p.GEOM_SPHERE,
@@ -54,7 +54,7 @@ def spawn_random_object():
         )
     else:  # cylinder
         radius = random.uniform(0.1, 0.2)
-        height = random.uniform(0.1, 0.2)
+        height = random.uniform(0.2, 0.3)
         collision_shape = p.createCollisionShape(
             p.GEOM_CYLINDER, radius=radius, height=height
         )
@@ -84,10 +84,7 @@ def spawn_random_object():
     return body_id
 
 
-def print_dynamics_info(body_id):
-    """
-    Prints mass, local inertia, friction, damping, etc. for each link (and base).
-    """
+def print_joint_info(body_id):
     JOINT_TYPES = {
         p.JOINT_REVOLUTE: "REVOLUTE",
         p.JOINT_PRISMATIC: "PRISMATIC",
@@ -95,6 +92,82 @@ def print_dynamics_info(body_id):
         p.JOINT_PLANAR: "PLANAR",
         p.JOINT_FIXED: "FIXED",
     }
+
+    headers = [
+        "JointIdx",
+        "JointName",
+        "JointType",
+        "qIndex",
+        "uIndex",
+        "Flags",
+        "JointDamping",
+        "JointFriction",
+        "LowerLimit",
+        "UpperLimit",
+        "MaxForce",
+        "MaxVelocity",
+        "LinkName",
+        "JointAxis",
+        "ParentFramePos",
+        "ParentFrameOrn",
+        "ParentIndex",
+    ]
+
+    rows = []
+
+    for i in range(p.getNumJoints(body_id)):
+        info = p.getJointInfo(body_id, i)
+        joint_axis = np.round(info[13], 3)  # vec3
+        parent_pos = np.round(info[14], 3)  # vec3
+        parent_orn = np.round(info[15], 3)  # vec4
+
+        rows.append(
+            [
+                info[0],  # jointIndex
+                info[1].decode("utf-8"),  # jointName
+                JOINT_TYPES.get(info[2], info[2]),  # jointType
+                info[3],  # qIndex
+                info[4],  # uIndex
+                info[5],  # flags
+                round(info[6], 3),  # jointDamping
+                round(info[7], 3),  # jointFriction
+                round(info[8], 3),  # jointLowerLimit
+                round(info[9], 3),  # jointUpperLimit
+                round(info[10], 3),  # jointMaxForce
+                round(info[11], 3),  # jointMaxVelocity
+                info[12].decode("utf-8"),  # linkName
+                joint_axis,
+                parent_pos,
+                parent_orn,
+                info[16],  # parentIndex
+            ]
+        )
+
+    print("\n=== Joint Info for Body ID {} ===\n".format(body_id))
+    print(tabulate(rows, headers=headers, tablefmt="fancy_grid", floatfmt=".3f"))
+
+
+def print_dynamics_info(body_id):
+    """
+    Prints full dynamics information (mass, inertia, friction, restitution, etc.)
+    for the base and each link of a PyBullet body.
+    """
+    headers = [
+        "ID",
+        "Link",
+        "Mass",
+        "Lateral_Fric",
+        "Inertia_Diag",
+        "Inertia_Pos",
+        "Inertia_Orn",
+        "Restitution",
+        "Rolling_Fric",
+        "Spinning_Fric",
+        "Contact_Damp",
+        "Contact_Stiff",
+        "Body_Type",
+        "Collision_Margin",
+    ]
 
     rows = []
 
@@ -105,70 +178,47 @@ def print_dynamics_info(body_id):
             -1,
             "base",
             base_dyn[0],  # mass
-            np.round(base_dyn[2], 3),  # local inertia pos
-            np.round(base_dyn[3], 3),  # local inertia orn
             base_dyn[1],  # lateral friction
-            np.round(base_dyn[4], 3),  # restitution
-            base_dyn[5],  # rolling friction
-            base_dyn[6],  # spinning friction
-            base_dyn[7],  # contact damping
-            base_dyn[8],  # contact stiffness
-            "",  # jointIndex
-            "",  # jointType
-            "",  # jointAxis
-            "",  # parentFramePos
-            "",  # parentFrameOrn
-            "",  # parentIndex
+            np.round(base_dyn[2], 3),  # local inertia diagonal
+            np.round(base_dyn[3], 3),  # local inertial position
+            np.round(base_dyn[4], 3),  # local inertial orientation
+            base_dyn[5],  # restitution
+            base_dyn[6],  # rolling friction
+            base_dyn[7],  # spinning friction
+            base_dyn[8],  # contact damping
+            base_dyn[9],  # contact stiffness
+            base_dyn[10],  # body type
+            base_dyn[11],  # collision margin
         ]
     )
 
     # Links
     for i in range(p.getNumJoints(body_id)):
-        info = p.getJointInfo(body_id, i)
-        name = info[12].decode("utf-8")
-        dyn = p.getDynamicsInfo(body_id, i)
+        info = p.getDynamicsInfo(body_id, i)
+        name = p.getJointInfo(body_id, i)[12].decode(
+            "utf-8"
+        )  # link name from joint info
         rows.append(
             [
                 i,
                 name,
-                dyn[0],
-                np.round(dyn[2], 3),
-                np.round(dyn[3], 3),
-                dyn[1],
-                np.round(dyn[4], 3),
-                dyn[5],
-                dyn[6],
-                dyn[7],
-                dyn[8],
-                info[0],  # jointIndex
-                JOINT_TYPES.get(info[2], str(info[2])),  # jointType
-                np.round(info[13], 3),  # jointAxis
-                np.round(info[14], 3),  # parentFramePos
-                np.round(info[15], 3),  # parentFrameOrn
-                info[16],  # parentIndex
+                info[0],  # mass
+                info[1],  # lateral friction
+                np.round(info[2], 3),  # local inertia diagonal
+                np.round(info[3], 3),  # local inertial position
+                np.round(info[4], 3),  # local inertial orientation
+                info[5],  # restitution
+                info[6],  # rolling friction
+                info[7],  # spinning friction
+                info[8],  # contact damping
+                info[9],  # contact stiffness
+                info[10],  # body type
+                info[11],  # collision margin
             ]
         )
 
-    headers = [
-        "ID",
-        "Link",
-        "Mass",
-        "Inertia_Pos",
-        "Inertia_Orn",
-        "Friction",
-        "Restitution",
-        "Roll_Fric",
-        "Spin_Fric",
-        "Contact_Damp",
-        "Contact_Stiff",
-        "JointIdx",
-        "JointType",
-        "JointAxis",
-        "ParentPos",
-        "ParentOrn",
-        "ParentIdx",
-    ]
-
+    # Print title
+    print("\n=== Dynamics Info for Body ID {} ===\n".format(body_id))
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid", floatfmt=".3f"))
 
 
@@ -185,6 +235,7 @@ with PyBulletSim(gui=True) as client:
     startOrientation = p.getQuaternionFromEuler([0, 0, 0])
 
     r2d2_id = p.loadURDF("r2d2.urdf", startPos, startOrientation, useFixedBase=False)
+    print_joint_info(r2d2_id)
     print_dynamics_info(r2d2_id)
 
     HEAD_LINK = 13
@@ -193,6 +244,8 @@ with PyBulletSim(gui=True) as client:
     RIGHT_BACK_WHEEL = 3
     LEFT_FRONT_WHEEL = 6
     LEFT_BACK_WHEEL = 7
+    LEFT_GRIPPER = 9
+    RIGHT_GRIPPER = 11
 
     for _ in range(5):
         spawn_random_object()
@@ -295,6 +348,40 @@ with PyBulletSim(gui=True) as client:
                 targetVelocity=head_current_target_velocity,
             )
             head_current_target_velocity = wheel_target_velocities
+
+        if ord("o") in keys and keys[ord("o")] & p.KEY_IS_DOWN:
+            print("trying to open the gripper.")
+            p.setJointMotorControl2(
+                r2d2_id,
+                LEFT_GRIPPER,
+                p.POSITION_CONTROL,
+                targetPosition=0.548,
+                force=50,
+            )
+            p.setJointMotorControl2(
+                r2d2_id,
+                RIGHT_GRIPPER,
+                p.POSITION_CONTROL,
+                targetPosition=0.548,
+                force=50,
+            )
+
+        if ord("p") in keys and keys[ord("p")] & p.KEY_IS_DOWN:
+            print("trying to open the gripper.")
+            p.setJointMotorControl2(
+                r2d2_id,
+                LEFT_GRIPPER,
+                p.POSITION_CONTROL,
+                targetPosition=0,
+                force=50,
+            )
+            p.setJointMotorControl2(
+                r2d2_id,
+                RIGHT_GRIPPER,
+                p.POSITION_CONTROL,
+                targetPosition=0,
+                force=50,
+            )
 
         if frame % 3 == 0:  # every 10th frame → ~24 FPS equivalent
             view, proj = get_head_camera_view(r2d2_id, HEAD_BOX_LINK)
