@@ -246,6 +246,7 @@ with PyBulletSim(gui=True) as client:
     LEFT_BACK_WHEEL = 7
     LEFT_GRIPPER = 9
     RIGHT_GRIPPER = 11
+    GRIPPER_POLE = 8
 
     for _ in range(5):
         spawn_random_object()
@@ -333,12 +334,12 @@ with PyBulletSim(gui=True) as client:
             )
             wheel_current_target_velocities = wheel_target_velocities
 
-        if ord("i") in keys and keys[ord("i")] & p.KEY_IS_DOWN:
-            head_current_target_velocity = 5
-        elif ord("k") in keys and keys[ord("k")] & p.KEY_IS_DOWN:
-            head_current_target_velocity = -5
-        else:
-            head_current_target_velocity = 0
+        # if ord("i") in keys and keys[ord("i")] & p.KEY_IS_DOWN:
+        #     head_current_target_velocity = 5
+        # elif ord("k") in keys and keys[ord("k")] & p.KEY_IS_DOWN:
+        #     head_current_target_velocity = -5
+        # else:
+        #     head_current_target_velocity = 0
 
         if head_current_target_velocity != head_current_velocity:
             p.setJointMotorControl2(
@@ -349,8 +350,7 @@ with PyBulletSim(gui=True) as client:
             )
             head_current_target_velocity = wheel_target_velocities
 
-        if ord("o") in keys and keys[ord("o")] & p.KEY_IS_DOWN:
-            print("trying to open the gripper.")
+        if ord("o") in keys and keys[ord("o")] & p.KEY_WAS_TRIGGERED:
             p.setJointMotorControl2(
                 r2d2_id,
                 LEFT_GRIPPER,
@@ -366,8 +366,7 @@ with PyBulletSim(gui=True) as client:
                 force=50,
             )
 
-        if ord("p") in keys and keys[ord("p")] & p.KEY_IS_DOWN:
-            print("trying to open the gripper.")
+        if ord("p") in keys and keys[ord("p")] & p.KEY_WAS_TRIGGERED:
             p.setJointMotorControl2(
                 r2d2_id,
                 LEFT_GRIPPER,
@@ -378,6 +377,23 @@ with PyBulletSim(gui=True) as client:
             p.setJointMotorControl2(
                 r2d2_id,
                 RIGHT_GRIPPER,
+                p.POSITION_CONTROL,
+                targetPosition=0,
+                force=50,
+            )
+
+        if ord("u") in keys and keys[ord("u")] & p.KEY_WAS_TRIGGERED:
+            p.setJointMotorControl2(
+                r2d2_id,
+                GRIPPER_POLE,
+                p.POSITION_CONTROL,
+                targetPosition=-0.380,
+                force=50,
+            )
+        if ord("i") in keys and keys[ord("i")] & p.KEY_WAS_TRIGGERED:
+            p.setJointMotorControl2(
+                r2d2_id,
+                GRIPPER_POLE,
                 p.POSITION_CONTROL,
                 targetPosition=0,
                 force=50,
