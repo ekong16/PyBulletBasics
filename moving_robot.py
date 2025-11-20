@@ -30,6 +30,51 @@ class PyBulletSim:
         return False
 
 
+def spawn_pickable_object(shapetype):
+    half_height_box = 0.25
+    half_extents_box = [0.15, 0.15, half_height_box]
+    collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents_box)
+    visual_shape = p.createVisualShape(
+        p.GEOM_BOX,
+        halfExtents=half_extents_box,
+        rgbaColor=[random.random(), random.random(), random.random(), 1],
+    )
+
+    pos_box = [0, 1, half_height_box]
+    box_mass = 10
+
+    body_id_box = p.createMultiBody(
+        baseMass=box_mass,
+        baseCollisionShapeIndex=collision_shape,
+        baseVisualShapeIndex=visual_shape,
+        basePosition=pos_box,
+        baseOrientation=[0, 0, 0],
+    )
+
+    if shapetype == "box":
+        pos_obj = pos_box.copy()
+        pos_obj[2] += half_height_box + 0.05
+        obj_mass = 3
+        half_extents_obj = [0.05, 0.05, 0.05]
+        collision_shape_obj = p.createCollisionShape(
+            p.GEOM_BOX, halfExtents=half_extents_obj
+        )
+        visual_shape_obj = p.createVisualShape(
+            p.GEOM_BOX,
+            halfExtents=half_extents_obj,
+            rgbaColor=[random.random(), random.random(), random.random(), 1],
+        )
+        body_id_box = p.createMultiBody(
+            baseMass=obj_mass,
+            baseCollisionShapeIndex=collision_shape_obj,
+            baseVisualShapeIndex=visual_shape_obj,
+            basePosition=pos_obj,
+            baseOrientation=[0, 0, 0],
+        )
+
+    return body_id_box
+
+
 # --- Utility Functions ---
 def spawn_random_object():
     # Choose a random shape type: box, sphere, cylinder
@@ -147,6 +192,82 @@ def print_joint_info(body_id):
     print(tabulate(rows, headers=headers, tablefmt="fancy_grid", floatfmt=".3f"))
 
 
+def print_link_states(body_id):
+    """
+    Prints detailed link state information for the base and each link of a PyBullet body.
+    Includes world position/orientation, COM, local inertial frame, and velocities.
+    """
+    headers = [
+        "ID",
+        "Link",
+        "LinkWorldPos",
+        "LinkWorldOrn",
+        "COM_WorldPos",
+        "COM_WorldOrn",
+        "LocalInertiaPos",
+        "LocalInertiaOrn",
+        "LinearVel",
+        "AngularVel",
+    ]
+
+    rows = []
+
+    # Base link (index = -1)
+    base_state = p.getLinkState(
+        body_id, -1, computeLinkVelocity=1, computeForwardKinematics=1
+    )
+    # PyBullet returns None for some base fields, so fill manually
+    rows.append(
+        [
+            -1,
+            "base",
+            "N/A",
+            "N/A",
+            np.round(p.getBasePositionAndOrientation(body_id)[0], 3),
+            np.round(p.getBasePositionAndOrientation(body_id)[1], 3),
+            "N/A",
+            "N/A",
+            np.round(p.getBaseVelocity(body_id)[0], 3),
+            np.round(p.getBaseVelocity(body_id)[1], 3),
+        ]
+    )
+
+    # Links
+    for i in range(p.getNumJoints(body_id)):
+        link_state = p.getLinkState(
+            body_id, i, computeLinkVelocity=1, computeForwardKinematics=1
+        )
+        # Unpack values
+        world_link_pos = np.round(link_state[4], 3)  # visual/world frame pos
+        world_link_orn = np.round(link_state[5], 3)
+        com_world_pos = np.round(link_state[0], 3)  # center of mass
+        com_world_orn = np.round(link_state[1], 3)
+        local_inertia_pos = np.round(link_state[2], 3)
+        local_inertia_orn = np.round(link_state[3], 3)
+        lin_vel = np.round(link_state[6], 3)
+        ang_vel = np.round(link_state[7], 3)
+
+        name = p.getJointInfo(body_id, i)[12].decode("utf-8")
+
+        rows.append(
+            [
+                i,
+                name,
+                world_link_pos,
+                world_link_orn,
+                com_world_pos,
+                com_world_orn,
+                local_inertia_pos,
+                local_inertia_orn,
+                lin_vel,
+                ang_vel,
+            ]
+        )
+
+    print("\n=== Link States for Body ID {} ===\n".format(body_id))
+    print(tabulate(rows, headers=headers, tablefmt="fancy_grid"))
+
+
 def print_dynamics_info(body_id):
     """
     Prints full dynamics information (mass, inertia, friction, restitution, etc.)
@@ -248,8 +369,10 @@ with PyBulletSim(gui=True) as client:
     RIGHT_GRIPPER = 11
     GRIPPER_POLE = 8
 
-    for _ in range(5):
-        spawn_random_object()
+    # for _ in range(5):
+    #     spawn_random_object()
+
+    spawn_pickable_object("box")
 
     # --- Camera parameters and Get Camera View Func ---
     width, height = 160, 120
@@ -387,7 +510,7 @@ with PyBulletSim(gui=True) as client:
                 r2d2_id,
                 GRIPPER_POLE,
                 p.POSITION_CONTROL,
-                targetPosition=-0.380,
+                targetPosition=-0.300,
                 force=50,
             )
         if ord("i") in keys and keys[ord("i")] & p.KEY_WAS_TRIGGERED:
