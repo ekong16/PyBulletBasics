@@ -31,7 +31,7 @@ class PyBulletSim:
 
 
 def spawn_pickable_object(shapetype):
-    half_height_box = 0.25
+    half_height_box = 0.3
     half_extents_box = [0.15, 0.15, half_height_box]
     collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=half_extents_box)
     visual_shape = p.createVisualShape(
@@ -52,10 +52,11 @@ def spawn_pickable_object(shapetype):
     )
 
     if shapetype == "box":
+        half_height_obj = 0.05
         pos_obj = pos_box.copy()
-        pos_obj[2] += half_height_box + 0.05
-        obj_mass = 3
-        half_extents_obj = [0.05, 0.05, 0.05]
+        pos_obj[2] += half_height_box + half_height_obj
+        obj_mass = 1.5
+        half_extents_obj = [0.05, 0.05, half_height_obj]
         collision_shape_obj = p.createCollisionShape(
             p.GEOM_BOX, halfExtents=half_extents_obj
         )
@@ -194,73 +195,78 @@ def print_joint_info(body_id):
 
 def print_link_states(body_id):
     """
-    Prints detailed link state information for the base and each link of a PyBullet body.
-    Includes world position/orientation, COM, local inertial frame, and velocities.
+    Prints all fields returned by getLinkState() using the exact PyBullet names
+    and ordering from the official docs.
     """
+
     headers = [
         "ID",
-        "Link",
-        "LinkWorldPos",
-        "LinkWorldOrn",
-        "COM_WorldPos",
-        "COM_WorldOrn",
-        "LocalInertiaPos",
-        "LocalInertiaOrn",
-        "LinearVel",
-        "AngularVel",
+        "JointName",
+        "linkWorldPosition",
+        "linkWorldOrientation",
+        "localInertialFramePosition",
+        "localInertialFrameOrientation",
+        "worldLinkFramePosition",
+        "worldLinkFrameOrientation",
+        "worldLinearVelocity",
+        "worldAngularVelocity",
     ]
 
     rows = []
 
-    # Base link (index = -1)
-    base_state = p.getLinkState(
-        body_id, -1, computeLinkVelocity=1, computeForwardKinematics=1
-    )
-    # PyBullet returns None for some base fields, so fill manually
+    # BASE LINK (index = -1)
+    base_pos, base_orn = p.getBasePositionAndOrientation(body_id)
+    base_lin, base_ang = p.getBaseVelocity(body_id)
+
     rows.append(
         [
             -1,
             "base",
+            base_pos,
+            base_orn,
             "N/A",
             "N/A",
-            np.round(p.getBasePositionAndOrientation(body_id)[0], 3),
-            np.round(p.getBasePositionAndOrientation(body_id)[1], 3),
             "N/A",
             "N/A",
-            np.round(p.getBaseVelocity(body_id)[0], 3),
-            np.round(p.getBaseVelocity(body_id)[1], 3),
+            base_lin,
+            base_ang,
         ]
     )
 
-    # Links
+    # CHILD LINKS
     for i in range(p.getNumJoints(body_id)):
-        link_state = p.getLinkState(
-            body_id, i, computeLinkVelocity=1, computeForwardKinematics=1
+        state = p.getLinkState(
+            body_id,
+            i,
+            computeForwardKinematics=1,
+            computeLinkVelocity=1,
         )
-        # Unpack values
-        world_link_pos = np.round(link_state[4], 3)  # visual/world frame pos
-        world_link_orn = np.round(link_state[5], 3)
-        com_world_pos = np.round(link_state[0], 3)  # center of mass
-        com_world_orn = np.round(link_state[1], 3)
-        local_inertia_pos = np.round(link_state[2], 3)
-        local_inertia_orn = np.round(link_state[3], 3)
-        lin_vel = np.round(link_state[6], 3)
-        ang_vel = np.round(link_state[7], 3)
 
-        name = p.getJointInfo(body_id, i)[12].decode("utf-8")
+        (
+            linkWorldPosition,
+            linkWorldOrientation,
+            localInertialFramePosition,
+            localInertialFrameOrientation,
+            worldLinkFramePosition,
+            worldLinkFrameOrientation,
+            worldLinearVelocity,
+            worldAngularVelocity,
+        ) = state
+
+        joint_name = p.getJointInfo(body_id, i)[1].decode("utf-8")
 
         rows.append(
             [
                 i,
-                name,
-                world_link_pos,
-                world_link_orn,
-                com_world_pos,
-                com_world_orn,
-                local_inertia_pos,
-                local_inertia_orn,
-                lin_vel,
-                ang_vel,
+                joint_name,
+                np.round(linkWorldPosition, 3),
+                np.round(linkWorldOrientation, 3),
+                np.round(localInertialFramePosition, 3),
+                np.round(localInertialFrameOrientation, 3),
+                np.round(worldLinkFramePosition, 3),
+                np.round(worldLinkFrameOrientation, 3),
+                np.round(worldLinearVelocity, 3),
+                np.round(worldAngularVelocity, 3),
             ]
         )
 
@@ -356,7 +362,9 @@ with PyBulletSim(gui=True) as client:
     startOrientation = p.getQuaternionFromEuler([0, 0, 0])
 
     r2d2_id = p.loadURDF("r2d2.urdf", startPos, startOrientation, useFixedBase=False)
+
     print_joint_info(r2d2_id)
+    print_link_states(r2d2_id)
     print_dynamics_info(r2d2_id)
 
     HEAD_LINK = 13
