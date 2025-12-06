@@ -37,7 +37,7 @@ def spawn_pickable_object(shapetype):
     visual_shape = p.createVisualShape(
         p.GEOM_BOX,
         halfExtents=half_extents_box,
-        rgbaColor=[random.random(), random.random(), random.random(), 1],
+        rgbaColor=[0.36, 0.25, 0.20, 1],  # Dark Brown
     )
 
     pos_box = [0, 1, half_height_box]
@@ -56,14 +56,14 @@ def spawn_pickable_object(shapetype):
         pos_obj = pos_box.copy()
         pos_obj[2] += half_height_box + half_height_obj
         obj_mass = 1.5
-        half_extents_obj = [0.05, 0.05, half_height_obj]
+        half_extents_obj = [0.03, 0.03, half_height_obj]
         collision_shape_obj = p.createCollisionShape(
             p.GEOM_BOX, halfExtents=half_extents_obj
         )
         visual_shape_obj = p.createVisualShape(
             p.GEOM_BOX,
             halfExtents=half_extents_obj,
-            rgbaColor=[random.random(), random.random(), random.random(), 1],
+            rgbaColor=[0.25, 0.8, 0.3, 1],  # Leaf green
         )
         body_id_box = p.createMultiBody(
             baseMass=obj_mass,
@@ -428,16 +428,16 @@ with PyBulletSim(gui=True) as client:
 
         if frame % 50 == 0:
             print(
-                f"robotId: {r2d2_id}, robotBaseXYZ={np.round(pos, 2)} robotBaseOrnQuat: {np.round(orn, 2)}"
+                f"{frame}, robotId: {r2d2_id}, robotBaseXYZ={np.round(pos, 2)} robotBaseOrnQuat: {np.round(orn, 2)}"
             )
 
         if ord("e") in keys and keys[ord("e")] & p.KEY_IS_DOWN:  # forward
             wheel_target_velocities = [-25, -25, -25, -25]
-            forces = [8, 8, 8, 8]
+            forces = [5, 5, 5, 5]
 
         elif ord("d") in keys and keys[ord("d")] & p.KEY_IS_DOWN:  # backward
             wheel_target_velocities = [25, 25, 25, 25]
-            forces = [8, 8, 8, 8]
+            forces = [5, 5, 5, 5]
 
         elif ord("j") in keys and keys[ord("j")] & p.KEY_IS_DOWN:
             wheel_target_velocities = [-50, -50, 50, 50]
@@ -538,7 +538,7 @@ with PyBulletSim(gui=True) as client:
 
         # STEP
         p.stepSimulation()
-        time.sleep(1.0 / 240.0)
+        # time.sleep(1.0 / 240.0)
 
     cubePos, cubeOrn = p.getBasePositionAndOrientation(r2d2_id)
     print(cubePos, cubeOrn)
