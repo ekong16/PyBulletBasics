@@ -33,7 +33,7 @@ with utils.PyBulletSim(gui=True) as client:
         "humanoid/humanoid.urdf", initial_position, start_orientation, flags=flags
     )
 
-    env = HumanStandEnv(my_humanoid_id)
+    env = HumanStandEnv(my_humanoid_id, planeId)
 
     model = PPO.load("humanoid_final.zip", env=env)
     obs, _ = env.reset()

@@ -7,6 +7,8 @@ import numpy as np
 from stable_baselines3 import PPO
 import utils
 import math
+import random
+from sb3_contrib import RecurrentPPO
 
 ###VARS
 initial_position = [0, 0, 0.9]
@@ -17,24 +19,23 @@ yaw = 0
 start_orientation = p.getQuaternionFromEuler([roll, pitch, yaw])
 
 max_torque_map = {
-    "chest": [20, 20, 20],
-    "neck": [3, 3, 3],
-    "right_shoulder": [35, 35, 35],
-    "left_shoulder": [35, 35, 35],
-    "right_elbow": 20,
-    "left_elbow": 20,
-    "right_hip": [60, 60, 60],
-    "left_hip": [60, 60, 60],
-    "right_knee": 45,
-    "left_knee": 45,
-    "right_ankle": [5, 5, 5],
-    "left_ankle": [5, 5, 5],
+    "chest": [25, 25, 25],
+    "neck": [5, 5, 5],
+    "right_shoulder": [60, 60, 60],
+    "left_shoulder": [60, 60, 60],
+    "right_elbow": 30,
+    "left_elbow": 30,
+    "right_hip": [100, 100, 100],
+    "left_hip": [100, 100, 100],
+    "right_knee": 80,
+    "left_knee": 80,
+    "right_ankle": [10, 10, 10],
+    "left_ankle": [10, 10, 10],
 }
 
 
 # helper
 def resetJointMotorsAndState(humanoid_id):
-    # --- 1. PHASE 1: RESET POSITIONS AND VELOCITIES (STATE) ---
     # A. Reset the Base (Root) Position and Orientation
     p.resetBasePositionAndOrientation(humanoid_id, initial_position, start_orientation)
 
@@ -42,7 +43,7 @@ def resetJointMotorsAndState(humanoid_id):
     neutral_quat = [0.0, 0.0, 0.0, 1.0]
     zero_vel_3d = [0.0, 0.0, 0.0]
 
-    # B. Reset All Joints' State (Position & Velocity)
+    # Reset All Joints' State (Position & Velocity)
     for j in range(p.getNumJoints(humanoid_id)):
         info = p.getJointInfo(humanoid_id, j)
         joint_type = info[2]
@@ -55,7 +56,7 @@ def resetJointMotorsAndState(humanoid_id):
                 humanoid_id, j, targetValue=neutral_quat, targetVelocity=zero_vel_3d
             )
 
-    # --- 2. PHASE 2: DISABLE INTERNAL MOTORS (CONTROL MODE) ---
+    #  DISABLE INTERNAL MOTORS (CONTROL MODE)
 
     for j in range(p.getNumJoints(humanoid_id)):
         info = p.getJointInfo(humanoid_id, j)
@@ -77,12 +78,38 @@ def resetJointMotorsAndState(humanoid_id):
                 force=[0, 0, 0],  # Max force 0 = motor disabled
             )
 
+    # Increase hand and feet friction
+    # Replace these with your actual link indices from getJointInfo or URDF
+    # Right wrist: 5. Left wrist: 8
+    # Right ankle: 11. Left Ankle: 14
+    wrist_links = [5, 8]
+    ankle_links = [11, 14]
+
+    # Increase friction for wrists and ankles
+    for link in wrist_links:
+        p.changeDynamics(
+            bodyUniqueId=humanoid_id,
+            linkIndex=link,
+            lateralFriction=10.0,  # sticky enough for pushing
+            spinningFriction=0.0,
+            rollingFriction=0.0,
+        )
+
+    for link in ankle_links:
+        p.changeDynamics(
+            bodyUniqueId=humanoid_id,
+            linkIndex=link,
+            lateralFriction=3.0,  # sticky enough for pushing
+            spinningFriction=0.0,
+            rollingFriction=0.0,
+        )
+
 
 # ----------------
 # Gym environment
 # ----------------
 class HumanStandEnv(gymnasium.Env):
-    def __init__(self, humanoid_id):
+    def __init__(self, humanoid_id, plame_id):
         super().__init__()
         self.humanoid_id = humanoid_id
         self.n_joints = None
@@ -90,9 +117,49 @@ class HumanStandEnv(gymnasium.Env):
         self.observation_space = None
         self.dof_per_joint = None
         self.max_steps = 2048
+        self.episode_count = 0
         self.steps_count = 0
+        self.plane_id = plame_id
+
+        self.prev_action = None
+        self.action_idx_to_joint_name = []
+        self.max_forces_flat = []
+
+        self.cum_energy = 0
+        self.cum_vel = 0
+        self.prev_z_vel_chest = 0
+
+        self.stage = 1
+
+        self.force_factor = 3
 
         self._init_action_space(humanoid_id)
+        self._get_max_forces_flat()
+
+    def _get_max_forces_flat(self):
+        for j in range(self.n_joints):
+            info = p.getJointInfo(self.humanoid_id, j)
+            name = info[1].decode("utf-8")
+            if name in max_torque_map:
+                max_force = max_torque_map[name]
+            else:
+                max_force = None
+
+            if self.dof_per_joint[j] == 1:
+                assert max_force is not None
+                self.max_forces_flat.append(max_force)
+
+            elif self.dof_per_joint[j] > 1:
+                assert max_force is not None
+                for x in range(self.dof_per_joint[j]):
+                    self.max_forces_flat.append(max_force[x])
+
+        print(
+            "************",
+            len(self.max_forces_flat),
+            sum(self.dof_per_joint),
+            self.max_forces_flat,
+        )
 
     def _init_action_space(self, humanoid_id):
         self.n_joints = p.getNumJoints(humanoid_id)
@@ -119,10 +186,26 @@ class HumanStandEnv(gymnasium.Env):
 
     def reset(self, *, seed=None, options=None):
         super().reset(seed=seed)  # Gymnasium compatibility
+        self.episode_count += 1
+        self.stage = 1
+        print("EPISODE COUNT: ", self.episode_count)
         self.steps_count = 0
+        # self.cum_energy = 0
+        self.cum_vel = 0
         # Reset PyBullet humanoid
         p.resetBasePositionAndOrientation(
             self.humanoid_id, initial_position, start_orientation
+        )
+
+        # Randomize friction of ground to learn more robust moves...
+        sampled_mu = random.uniform(0.3, 1.5)
+        print(
+            f"************** SETTING FRICTION OF PLANE TO: {sampled_mu:.2f} *************"
+        )
+        p.changeDynamics(
+            bodyUniqueId=self.plane_id,
+            linkIndex=-1,  # Target the base (or only) body part of the plane
+            lateralFriction=sampled_mu,
         )
 
         resetJointMotorsAndState(self.humanoid_id)
@@ -139,14 +222,13 @@ class HumanStandEnv(gymnasium.Env):
 
     def step(self, action):
         printStep = False
-        if self.steps_count % 1024 == 0:
+        if self.steps_count % 256 == 0:
             printStep = True
             print("Step no: ", self.steps_count)
 
         action_idx = 0
         torque_vec = []
 
-        force_scale_factor = 1.0
         # if self.steps_count < 512:
         #     force_scale_factor = 1.0
         # elif self.steps_count < 1536:
@@ -158,18 +240,15 @@ class HumanStandEnv(gymnasium.Env):
             info = p.getJointInfo(self.humanoid_id, j)
             name = info[1].decode("utf-8")
             if name in max_torque_map:
-                max_force = np.array(max_torque_map[name]) * force_scale_factor
+                max_force = np.array(max_torque_map[name]) * self.force_factor
             else:
                 max_force = None
 
             if self.dof_per_joint[j] == 1:
                 assert max_force is not None
-
                 torque = action[action_idx] * max_force
-
                 if printStep:
                     print("Single DOF Joint: ", j, name, torque)
-
                 p.setJointMotorControl2(
                     self.humanoid_id, j, p.TORQUE_CONTROL, force=torque
                 )
@@ -177,7 +256,6 @@ class HumanStandEnv(gymnasium.Env):
 
             elif self.dof_per_joint[j] > 1:
                 assert max_force is not None
-
                 while len(torque_vec) < self.dof_per_joint[j]:
                     torqueComponent = action[action_idx]
                     torque_vec.append(float(torqueComponent))
@@ -200,27 +278,52 @@ class HumanStandEnv(gymnasium.Env):
 
         p.stepSimulation()
         # time.sleep(1 / 240.0)  # visualization
-        obs = self._get_obs()
+        obs = self._get_obs(printStep=printStep)
         reward = self._get_reward(action, printStep)
         done = self._is_done()
         info = {}
         truncated = False
         self.steps_count += 1
+        self.prev_action = action
 
         return obs, reward, done, truncated, info
 
-    def _get_obs(self):
+    def _get_obs(self, printStep=False):
         angles, velocities = [], []
         for j in range(p.getNumJoints(self.humanoid_id)):
             js = p.getJointState(self.humanoid_id, j)
             angles.append(js[0])
             velocities.append(js[1])
+
+            # if self.dof_per_joint[j] == 1 and printStep:
+            #     print(
+            #         "**IN OBS",
+            #         "Single DOF",
+            #         "joint index",
+            #         j,
+            #         "angles:",
+            #         js[0],
+            #         "velocities: ",
+            #         js[1],
+            #     )
+            # elif self.dof_per_joint[j] > 1 and printStep:
+            #     print(
+            #         "**IN OBS",
+            #         "Multi DOF",
+            #         "joint index",
+            #         j,
+            #         "angles:",
+            #         js[0],
+            #         "velocities: ",
+            #         js[1],
+            #     )
         pos, orn = p.getBasePositionAndOrientation(self.humanoid_id)
         lin_vel, ang_vel = p.getBaseVelocity(self.humanoid_id)
         return np.array(
             angles + velocities + list(orn) + list(ang_vel), dtype=np.float32
         )
 
+    """
     def _get_reward(self, action, printStep=False):
         # Chest Upright Score
         root_link_index = 0
@@ -317,6 +420,196 @@ class HumanStandEnv(gymnasium.Env):
             )
 
         return reward
+    """
+
+    def _get_reward(self, action, printStep=False):
+        # Action smoothness score
+        if self.prev_action is not None:
+            prior_forces = self.prev_action * self.max_forces_flat * self.force_factor
+        else:
+            prior_forces = np.zeros(len(self.max_forces_flat))
+            print(prior_forces)
+
+        curr_forces = action * self.max_forces_flat * self.force_factor
+        applied_forces_dist = np.linalg.norm(curr_forces - prior_forces)
+
+        if printStep:
+            print("curr_forces", curr_forces)
+            print("Action", action)
+            print("maxForces", self.max_forces_flat)
+            print("Applied forces", curr_forces)
+            print("curr vs prev applied forces dist", applied_forces_dist)
+
+        # Total Energy Score
+        energy_used = np.linalg.norm(curr_forces)
+        self.cum_energy += energy_used
+
+        # Chest orn Score
+        chest_link_index = 1
+        chest_link_state = p.getLinkState(
+            self.humanoid_id, chest_link_index, computeLinkVelocity=1
+        )
+        chest_orn = chest_link_state[1]
+
+        chest_rot_matrix = np.array(p.getMatrixFromQuaternion(chest_orn)).reshape(3, 3)
+        chest_z = chest_rot_matrix[:, 2]  # local Z-axis in world frame
+
+        chest_upright_score = np.dot(np.array([0, 0, 1]), chest_z)
+
+        linear_velocity = chest_link_state[6]
+
+        # Vertical Velocity
+        vertical_score = linear_velocity[2]
+        self.cum_vel += vertical_score
+
+        # Vertical Acceleration
+        vertical_acceleration = linear_velocity[2] - self.prev_z_vel_chest
+        self.prev_z_vel_chest = vertical_score
+
+        # Joint velocity penalty:
+        joint_velocities = []
+        for j in range(p.getNumJoints(self.humanoid_id)):
+            js = p.getJointState(self.humanoid_id, j)
+            joint_velocities.append(js[1])
+        vel_norm = np.linalg.norm(joint_velocities)
+        # vel_totalmax = math.sqrt(math.pow(10, 2) * len(joint_velocities))
+        velocity_penalty = vel_norm
+
+        # Foot velocity penalty
+        right_ankle_index = 11
+        left_ankle_index = 14
+        link_state_right_ankle = p.getLinkState(
+            self.humanoid_id,
+            right_ankle_index,
+            computeLinkVelocity=1,
+        )
+        right_ankle_linear_velocity = link_state_right_ankle[6]
+        link_state_left_ankle = p.getLinkState(
+            self.humanoid_id,
+            left_ankle_index,
+            computeLinkVelocity=1,
+        )
+        left_ankle_linear_velocity = link_state_left_ankle[6]
+        total_ankle_vel = np.linalg.norm(right_ankle_linear_velocity) + np.linalg.norm(
+            left_ankle_linear_velocity
+        )
+
+        # Self Collision Penalty
+        self_contacts = p.getContactPoints(
+            bodyA=self.humanoid_id,
+            bodyB=self.humanoid_id,
+        )
+        num_contact_points = len(self_contacts)
+
+        # Flying away penalty
+        ground_contacts = p.getContactPoints(
+            bodyA=self.humanoid_id, bodyB=self.plane_id
+        )
+
+        # Foot removal penalty
+        ground_contact_right_foot = p.getContactPoints(
+            bodyA=self.humanoid_id, bodyB=self.plane_id, linkIndexA=right_ankle_index
+        )
+        ground_contact_left_foot = p.getContactPoints(
+            bodyA=self.humanoid_id, bodyB=self.plane_id, linkIndexA=left_ankle_index
+        )
+        foot_floating_penalty = 0
+        if len(ground_contact_left_foot) == 0 and len(ground_contact_right_foot) == 0:
+            foot_floating_penalty = 10
+
+        # Stage 2: Root Velocity and Chest orientation...
+        if self.stage > 1:
+            root_link_index = 0
+            root_link_state = p.getLinkState(
+                self.humanoid_id, root_link_index, computeLinkVelocity=1
+            )
+            root_orn = root_link_state[1]
+            root_rot_matrix = np.array(p.getMatrixFromQuaternion(root_orn)).reshape(
+                3, 3
+            )
+            root_z = root_rot_matrix[:, 2]  # local Z-axis in world frame
+            root_upright_score = np.dot(np.array([0, 0, 1]), root_z)
+            root_linear_velocity = root_link_state[6][2]
+
+        # Stage 3: Head Orientation and
+        neck_link_index = 2
+        neck_link_state = p.getLinkState(
+            self.humanoid_id, neck_link_index, computeLinkVelocity=1
+        )
+        neck_orn = neck_link_state[1]
+        neck_rot_matrix = np.array(p.getMatrixFromQuaternion(neck_orn)).reshape(3, 3)
+        neck_z = neck_rot_matrix[:, 2]  # local Z-axis in world frame
+        neck_upright_score = np.dot(np.array([0, 0, 1]), neck_z)
+
+        fly_away_penalty = 0
+        if len(ground_contacts) == 0:
+            fly_away_penalty = 100
+
+        reward = (
+            self.cum_vel / energy_used
+            + 1 * vertical_score / energy_used
+            + 1 * vertical_acceleration / energy_used
+            # + 7 * chest_upright_score
+            - applied_forces_dist / 1000
+            # - self.cum_energy / 100
+            - 1 * energy_used
+            - 1 * total_ankle_vel
+            - 1 * velocity_penalty
+            - 10 * num_contact_points
+            - fly_away_penalty
+            - foot_floating_penalty
+        )
+
+        if self.stage > 1:
+            reward += 1 * chest_upright_score
+            reward += 1 * root_linear_velocity / energy_used
+
+        if self.stage > 2:
+            reward += 1 * root_upright_score
+            reward += 1 * neck_upright_score
+
+        if self.stage == 1 and self.cum_vel > 150:
+            print("**************** STAGE 2 ACHIEVED ***************")
+            self.stage = 2
+            reward += 1_000
+
+        if self.stage > 1 and self.cum_vel < 125:
+            reward -= 10
+            if printStep:
+                print("***** STAGE 2 PUNISHMENT FOR REGRESSING IN HEIGHT ********")
+
+        if self.stage == 2 and self.cum_vel > 225:
+            self.stage = 3
+            reward += 1_000
+            print("**** STAGE 3 Achieved *********")
+
+        if printStep:
+            print(f"Cum Vel: {self.cum_vel:.2f}. vel ={vertical_score:.2f} ")
+            print(f"Vertical vel score: {vertical_score / energy_used:.2f}")
+            print(f"Vertical acc score: {vertical_acceleration / energy_used:.2f}")
+            # print(
+            #     f"Chest local z: {chest_z}. Chest Reward: {chest_upright_score: .2f}",
+            # )
+            print(f"Smoothness: {applied_forces_dist: .2f}.")
+            print(f"energy penalty: {energy_used: .2f}.")
+            print(f"Ankle movement: {total_ankle_vel: .2f}.")
+            print(f"velocity penalty: {velocity_penalty: .2f}.")
+            print(f"Self Contact points: {num_contact_points: .2f}.")
+            print(f"Fly away penalty: {fly_away_penalty: .2f}.")
+            print(f"Foot floating penalty: {foot_floating_penalty: .2f}.")
+
+            if self.stage > 1:
+                print(f"Chest Upright score {chest_upright_score:.2f}.")
+                print(f"Root lin vel: {root_linear_velocity:.2f}")
+
+            if self.stage > 2:
+                print(f"Root Upright score {root_upright_score:.2f}.")
+                print(f"Head Upright score {neck_upright_score:.2f}.")
+
+            print(f"Cum energy: {self.cum_energy: .2f}.")
+            print(f"Total reward: {reward: .2f}.")
+
+        return reward
 
     def _is_done(self):
         torso_height = p.getBasePositionAndOrientation(self.humanoid_id)[0][2]
@@ -324,6 +617,8 @@ class HumanStandEnv(gymnasium.Env):
             return True
         if self.steps_count > self.max_steps:
             return True
+        # if self.cum_energy > 100_000:
+        #     return True
 
 
 if __name__ == "__main__":
@@ -357,11 +652,12 @@ if __name__ == "__main__":
         # ----------------
         # Train PPO
         # ----------------
-        env = HumanStandEnv(my_humanoid_id)
+        env = HumanStandEnv(my_humanoid_id, planeId)
 
         # policy_kwargs = dict(log_std_init=np.log(10))  # std ≈ 100 N·m
 
         # model = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
-        model = PPO("MlpPolicy", env, verbose=1)
-        model.learn(total_timesteps=1_000_000)
+        model = RecurrentPPO("MlpLstmPolicy", env, verbose=1)
+        print("MODEL POLICY ******** ", model.policy)
+        model.learn(total_timesteps=204_800)
         model.save("humanoid_final.zip")
