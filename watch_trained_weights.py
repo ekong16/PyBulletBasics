@@ -9,7 +9,8 @@ import utils
 import math
 
 from standing_human import HumanStandEnv
-
+from stable_baselines3.common.vec_env import VecNormalize, VecFrameStack, DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
 
 ###VARS
 initial_position = [0, 0, 0.9]
@@ -34,13 +35,19 @@ with utils.PyBulletSim(gui=True) as client:
     )
 
     env = HumanStandEnv(my_humanoid_id, planeId)
+    env_monitored = Monitor(env)
+    env_single = DummyVecEnv([lambda: env_monitored])
+    env_stacked = VecFrameStack(env_single, n_stack=8)
+    env_normalized = VecNormalize.load("vec_normalize_stats.pkl", venv=env_stacked)
 
-    model = PPO.load("humanoid_final.zip", env=env)
-    obs, _ = env.reset()
+    model = PPO.load("humanoid_final.zip", env_normalized)
+    env_normalized.training = False
+
+    obs = env_normalized.reset()
     done = False
     while not done:
-        action, _ = model.predict(obs)
-        obs, reward, done, truncated, info = env.step(action)
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, done, info = env_normalized.step(action)
 
     print("DONE STEPPING")
 

@@ -9,6 +9,8 @@ import utils
 import math
 import random
 from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.vec_env import VecNormalize, VecFrameStack, DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
 
 ###VARS
 initial_position = [0, 0, 0.9]
@@ -116,7 +118,7 @@ class HumanStandEnv(gymnasium.Env):
         self.action_space = None
         self.observation_space = None
         self.dof_per_joint = None
-        self.max_steps = 2048
+        self.max_steps = 512
         self.episode_count = 0
         self.steps_count = 0
         self.plane_id = plame_id
@@ -131,7 +133,9 @@ class HumanStandEnv(gymnasium.Env):
 
         self.stage = 1
 
-        self.force_factor = 3
+        self.grace_period = np.random.randint(100, 201)  # nStep grace period
+
+        self.force_factor = 1
 
         self._init_action_space(humanoid_id)
         self._get_max_forces_flat()
@@ -178,7 +182,7 @@ class HumanStandEnv(gymnasium.Env):
         self.dof_per_joint = dof_per_joint
 
         self.action_space = spaces.Box(
-            low=-200, high=200, shape=(sum(self.dof_per_joint),), dtype=np.float32
+            low=-1, high=1, shape=(sum(self.dof_per_joint),), dtype=np.float32
         )
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(self.n_joints * 2 + 7,), dtype=np.float32
@@ -192,6 +196,8 @@ class HumanStandEnv(gymnasium.Env):
         self.steps_count = 0
         # self.cum_energy = 0
         self.cum_vel = 0
+
+        self.grace_period = np.random.randint(100, 201)
         # Reset PyBullet humanoid
         p.resetBasePositionAndOrientation(
             self.humanoid_id, initial_position, start_orientation
@@ -276,11 +282,14 @@ class HumanStandEnv(gymnasium.Env):
         if printStep:
             print("\n")
 
-        p.stepSimulation()
+        for _ in range(4):
+            # Frame Skip of 4...
+            p.stepSimulation()
         # time.sleep(1 / 240.0)  # visualization
         obs = self._get_obs(printStep=printStep)
-        reward = self._get_reward(action, printStep)
-        done = self._is_done()
+        reward, done = self._get_reward(action, printStep)
+        if not done:
+            done = self._is_done()
         info = {}
         truncated = False
         self.steps_count += 1
@@ -423,6 +432,226 @@ class HumanStandEnv(gymnasium.Env):
     """
 
     def _get_reward(self, action, printStep=False):
+        done = False
+        target_height = 0.75
+
+        # 1. POSITION & ORIENTATION DATA
+        chest_state = p.getLinkState(self.humanoid_id, 1)
+        chest_z, chest_orn = chest_state[0][2], chest_state[1]
+        root_z = p.getLinkState(self.humanoid_id, 0)[0][2]
+
+        # 2. THE "CLEAN SLICE" UPRIGHTNESS
+        # Convert flat list to 3x3 matrix so we can use your [:, 2] syntax
+        rot_matrix_flat = p.getMatrixFromQuaternion(chest_orn)
+        matrix = np.array(rot_matrix_flat).reshape(3, 3)
+
+        # local_up is the 3rd column (index 2)
+        local_up = matrix[:, 2]
+        world_up = np.array([0, 0, 1])
+
+        # Dot product: 1.0 (vertical), 0.0 (horizontal)
+        uprightness = np.dot(local_up, world_up)
+        uprightness = max(0, uprightness)
+
+        upright_reward = 0.0
+        if root_z > 0.40:  # The gate: Pelvis must be lifted to earn uprightness points
+            upright_reward = 0.50 * uprightness
+
+        # 3. NORMALIZED COMPONENTS (±1.0 Total Range)
+        chest_pos_score = 0.15 * max(0, chest_z - 0.44)
+        root_pos_score = 0.10 * max(0, root_z - 0.36)
+        extra_height_bonus = 0.25 if chest_z > target_height else 0.0
+
+        falling_penalty = 0.0
+        if self.steps_count > self.grace_period and chest_z < target_height:
+            falling_penalty = -1.0 * (target_height - chest_z)
+
+        # Stability
+        lin_vel, _ = p.getBaseVelocity(self.humanoid_id)
+        speed = np.linalg.norm(lin_vel)
+        stability_bonus = 0.10 * np.exp(-2.0 * speed) if chest_z > 0.60 else 0.0
+
+        # 4. TOTAL REWARD
+        reward = (
+            chest_pos_score
+            + root_pos_score
+            + upright_reward
+            + extra_height_bonus
+            + falling_penalty
+            + stability_bonus
+        )
+
+        # 5. DIAGNOSTICS (All 6 Components)
+        if printStep:
+            print(f"--- Step {self.steps_count} ---")
+            print(f"Heights        | Chest: {chest_z:.3f} | Root: {root_z:.3f}")
+            print(
+                f"1. Uprightness | Value: {uprightness:.3f} | Rew: {upright_reward:.3f}"
+            )
+            print(f"2. Chest Lift  | Score: {chest_pos_score:.3f}")
+            print(f"3. Root Lift   | Score: {root_pos_score:.3f}")
+            print(f"4. Jackpot     | Bonus: {extra_height_bonus:.3f}")
+            print(f"5. Fall Tax    | Penalty: {falling_penalty:.3f}")
+            print(f"6. Stability   | Speed: {speed:.3f} | Bonus: {stability_bonus:.3f}")
+            print(f"TOTAL REWARD   | {reward:.3f}")
+
+        if chest_z > 1.5:
+            done = True
+        return reward, done
+
+    """
+    def _get_reward(self, action, printStep=False):
+        # Done?
+        done = False
+
+        # Action smoothness score
+        max_force_per_joint = np.array(self.max_forces_flat) * self.force_factor
+        if self.prev_action is not None:
+            prior_forces = self.prev_action * max_force_per_joint
+        else:
+            prior_forces = np.zeros(len(max_force_per_joint))
+            print(prior_forces)
+
+        curr_forces = action * max_force_per_joint
+        applied_forces_dist = np.linalg.norm(curr_forces - prior_forces)
+        applied_forces_max_dist = np.linalg.norm(2 * max_force_per_joint)
+        smoothness_penalty = applied_forces_dist / applied_forces_max_dist
+
+        # Energy Score
+        forces_total = np.linalg.norm(curr_forces)
+        max_total_force = np.linalg.norm(max_force_per_joint)
+        force_used_penalty = forces_total / max_total_force
+
+        # Chest height and orientation
+        chest_link_index = 1
+        chest_link_state = p.getLinkState(
+            self.humanoid_id, chest_link_index, computeLinkVelocity=1
+        )
+        chest_pos = chest_link_state[0]
+        chest_orn = chest_link_state[1]
+        chest_rot_matrix = np.array(p.getMatrixFromQuaternion(chest_orn)).reshape(3, 3)
+        chest_z = chest_rot_matrix[:, 2]  # local Z-axis in world frame
+        chest_upright_score = np.dot(np.array([0, 0, 1]), chest_z)  # Used in stage 2...
+        maxChestHeight = 1.5
+        lyingDownHeight = 0.44
+        minChestHeightAfterNSteps = 0.75
+        terminationChestHeightAfterNSteps = 0.55
+        targetChestHeight = 1.15
+        # fallDownGraceSteps = 120  # nStep grace period
+        chest_pos_score = min(chest_pos[2], targetChestHeight) - lyingDownHeight
+        chest_pos_score = max(0, chest_pos_score)
+
+        fallingPenalty = 0
+        if chest_pos[2] > maxChestHeight:
+            done = True
+        if self.steps_count > self.grace_period:
+            if chest_pos[2] < minChestHeightAfterNSteps:
+                fallingPenalty = -5
+
+            # if chest_pos[2] < terminationChestHeightAfterNSteps:
+            #     done = True
+
+        # Base Speed FActor
+        # 1. GET SPEED (The Brake Sensor)
+        lin_vel, _ = p.getBaseVelocity(self.humanoid_id)
+        speed = np.linalg.norm(lin_vel)
+
+        stability_bonus = 0
+        if chest_pos[2] > minChestHeightAfterNSteps:
+            stability_bonus = 1.0 * np.exp(-2.0 * speed)
+
+        # Extra reward for height maintainence
+        extraReward = 0
+        if chest_pos[2] > minChestHeightAfterNSteps:
+            extraReward = 1
+
+        # Root Position
+        root_link_index = 0
+        root_link_state = p.getLinkState(
+            self.humanoid_id, root_link_index, computeLinkVelocity=1
+        )
+        root_pos = root_link_state[0]
+        target_root_height = 1
+        lyingDownRootHeight = 0.36
+        minRootHeightAfterNSteps = 0.44
+        root_pos_score = min(root_pos[2], target_root_height) - lyingDownRootHeight
+        root_pos_score = max(0, root_pos_score)
+
+        # if (
+        #     self.steps_count > self.grace_period
+        #     and root_pos[2] < minRootHeightAfterNSteps
+        # ):
+        #     self.done = True
+
+        # Self Collision Penalty
+        self_contacts = p.getContactPoints(
+            bodyA=self.humanoid_id,
+            bodyB=self.humanoid_id,
+        )
+        num_contact_points = len(self_contacts)
+        self_collision_penalty = num_contact_points / 10
+
+        # Joint velocity penalty:
+        joint_velocities = []
+        for j in range(p.getNumJoints(self.humanoid_id)):
+            js = p.getJointState(self.humanoid_id, j)
+            joint_velocities.append(js[1])
+        vel_norm = np.linalg.norm(joint_velocities)
+        vel_totalmax = math.sqrt(
+            math.pow(10, 2) * len(joint_velocities)
+        )  # 10 rad/s as the max vel
+        velocity_penalty = vel_norm / vel_totalmax
+
+        chest_pos_score_w = 0.50
+        smoothness_penalty_w = 0.05
+        force_used_penalty_w = 0.05
+        self_collision_penalty_w = 0.30
+        velocity_penalty_w = 0.10
+
+        reward = (
+            chest_pos_score
+            + root_pos_score
+            + extraReward
+            + fallingPenalty
+            + stability_bonus
+            # chest_pos_score_w * chest_pos_score
+            # - smoothness_penalty_w * smoothness_penalty
+            # - force_used_penalty_w * force_used_penalty
+            # - self_collision_penalty_w * self_collision_penalty
+            # - velocity_penalty_w * velocity_penalty
+        )
+
+        if printStep:
+            print(f"Grace Period is {self.grace_period}. ")
+            print(f"Chest pos score: {chest_pos_score:.2f}.")
+            print(f"Root pos score: {root_pos_score:.2f}.")
+            print(f"Extra reward: {extraReward:.2f}")
+            print(f"Falling extra penalty {fallingPenalty:.2f}")
+            print(f"Stability bonus: {stability_bonus:.2f}")
+            # print(
+            #     f"Chest pos score: {chest_pos_score:.2f}. Weighted: {chest_pos_score_w * chest_pos_score:.2f}"
+            # )
+            # print(
+            #     f"Chest pos score: {root_pos_score:.2f}. Weighted: {chest_pos_score_w * chest_pos_score:.2f}"
+            # )
+            # print(
+            #     f"Smoothness penalty: {smoothness_penalty:.2f}. Weighted: {smoothness_penalty_w * smoothness_penalty:.2f}"
+            # )
+            # print(
+            #     f"Force used penalty: {force_used_penalty:.2f}. Weighted: {force_used_penalty_w * force_used_penalty:.2f}"
+            # )
+            # print(
+            #     f"Self collision penalty: {self_collision_penalty:.2f}. Weighted: {self_collision_penalty_w * self_collision_penalty:.2f}"
+            # )
+            # print(
+            #     f"Velocity penalty {chest_pos_score:.2f}. Weighted: {velocity_penalty_w * velocity_penalty_w:.2f}"
+            # )
+            # print(f"TOTAL REWARD: {reward:.2f}")
+
+        return reward, done
+    """
+
+    def _get_reward_large_numbers(self, action, printStep=False):
         # Action smoothness score
         if self.prev_action is not None:
             prior_forces = self.prev_action * self.max_forces_flat * self.force_factor
@@ -653,11 +882,30 @@ if __name__ == "__main__":
         # Train PPO
         # ----------------
         env = HumanStandEnv(my_humanoid_id, planeId)
+        env_monitored = Monitor(env)
+        env_single = DummyVecEnv([lambda: env_monitored])
+        env_stacked = VecFrameStack(env_single, n_stack=8)
+        env_normalized = VecNormalize(env_stacked, norm_obs=True, norm_reward=False)
+        policy_kwargs = dict(log_std_init=-2.0)
 
-        # policy_kwargs = dict(log_std_init=np.log(10))  # std ≈ 100 N·m
-
+        LOG_DIR = "./logs/"
         # model = PPO("MlpPolicy", env, policy_kwargs=policy_kwargs, verbose=1)
-        model = RecurrentPPO("MlpLstmPolicy", env, verbose=1)
+
+        # model = PPO.load(
+        #     "humanoid_final.zip", env=env_normalized, tensorboard_long=LOG_DIR
+        # )
+        model = PPO(
+            "MlpPolicy",
+            env_normalized,
+            learning_rate=0.0001,
+            verbose=1,
+            tensorboard_log=LOG_DIR,
+        )
         print("MODEL POLICY ******** ", model.policy)
-        model.learn(total_timesteps=204_800)
+        model.learn(
+            total_timesteps=5_000_000,
+            tb_log_name="run_3",
+            reset_num_timesteps=False,
+        )
         model.save("humanoid_final.zip")
+        env_normalized.save("vec_normalize_stats.pkl")
