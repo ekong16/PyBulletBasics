@@ -38,18 +38,20 @@ with utils.PyBulletSim(gui=True) as client:
     env_monitored = Monitor(env)
     env_single = DummyVecEnv([lambda: env_monitored])
     env_stacked = VecFrameStack(env_single, n_stack=8)
-    env_normalized = VecNormalize.load("vec_normalize_stats.pkl", venv=env_stacked)
-
-    model = PPO.load("humanoid_final.zip", env_normalized)
+    env_normalized = VecNormalize.load("vec_normalize_v12.pkl", venv=env_stacked)
+    env.training = False
+    env.norm_reward = False
+    model = PPO.load("humanoid_v12_final.zip", env_normalized)
     env_normalized.training = False
 
-    obs = env_normalized.reset()
-    done = False
-    while not done:
-        action, _ = model.predict(obs, deterministic=True)
-        obs, reward, done, info = env_normalized.step(action)
+    for i in range(10):
+        obs = env_normalized.reset()
+        done = False
+        while not done:
+            action, _ = model.predict(obs, deterministic=True)
+            obs, reward, done, info = env_normalized.step(action)
 
-    print("DONE STEPPING")
+        print("DONE STEPPING")
 
     while True:
         p.stepSimulation()
