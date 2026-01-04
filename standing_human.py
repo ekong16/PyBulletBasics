@@ -90,11 +90,13 @@ class HumanStandEnv(gymnasium.Env):
         self.weights = {
             "chest_height": 2.0,  # Primary motivator
             "root_height": 1.0,  # Secondary motivator
+            "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 1.0,  # Orientation weight
+            "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.1,  # Gated velocity (only works when low)
             "energy_cost": -0.05,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
-            "termination_penalty": -10.0,
+            "termination_penalty": -100.0,
         }
         self.foot_links = []
 
@@ -206,10 +208,20 @@ class HumanStandEnv(gymnasium.Env):
         chest_vel_z = chest_state[6][2]  # Z-velocity in world space
         root_z = root_state[0][2]
 
+        head_index = 2
+        head_state = p.getLinkState(self.humanoid_id, head_index)
+
+        head_pos, head_orn = head_state[0], head_state[1]
+        head_z = head_pos[2]
+
         # 2. Orientation (Uprightness)
         rot_matrix = np.array(p.getMatrixFromQuaternion(chest_orn)).reshape(3, 3)
         chest_up_vector = rot_matrix[:, 2]  # The local Z-axis of the chest link
         uprightness = max(0, np.dot(chest_up_vector, [0, 0, 1]))
+
+        head_rot_matrix = np.array(p.getMatrixFromQuaternion(head_orn)).reshape(3, 3)
+        head_up_vector = head_rot_matrix[:, 2]
+        head_uprightness = max(0, np.dot(head_up_vector, [0, 0, 1]))
 
         # CONTACT DETECTION (The Cure for Helicopter Legs)
         feet_contact_reward = 0.0
@@ -245,6 +257,14 @@ class HumanStandEnv(gymnasium.Env):
             reward_vel = self.weights["chest_vel"] * chest_vel_z
         else:
             reward_vel = 0.0
+
+        # NEW: NECK/HEAD REWARDS (Simplified)
+        reward_neck_height = self.weights["neck_height"] * max(0, head_z - 0.41)
+        # 2. Head Orientation
+        # Gated by height so we don't reward looking at the ceiling while lying on back.
+        reward_neck_orient = self.weights["neck_orientation"] * (
+            head_uprightness * max(0, head_z - 0.123)
+        )
 
         # D. ACTION PENALTY (New)
         # Penalize high action values to prevent flailing
@@ -282,6 +302,8 @@ class HumanStandEnv(gymnasium.Env):
             + reward_survival
             + reward_feet
             + reward_term
+            + reward_neck_height
+            + reward_neck_orient
         )
 
         decomp = {
@@ -293,6 +315,8 @@ class HumanStandEnv(gymnasium.Env):
             "06_survival": reward_survival,
             "07_feet": reward_feet,
             "08_term": reward_term,
+            "09_neck_height": reward_neck_height,
+            "10_neck_uprightness": reward_neck_orient,
             "z_TOTAL": total_reward,
         }
 
@@ -315,7 +339,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -328,6 +352,8 @@ if __name__ == "__main__":
 
         print("\n--- Humanoid Diagnostic Info ---")
         utils.print_joint_info(humanoid_id)
+        utils.print_dynamics_info(humanoid_id)
+        utils.print_link_states(humanoid_id)
 
         p.setTimeStep(1 / 240.0)
         p.setPhysicsEngineParameter(numSolverIterations=200)
