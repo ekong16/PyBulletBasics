@@ -15,12 +15,12 @@ from typing import Callable
 # ==========================================
 # GLOBAL VARS & CONFIG
 # ==========================================
-INITIAL_POSITION = [0, 0, 0.9]
+INITIAL_POSITION = [0, 0, 0.2]
 ROLL, PITCH, YAW = 0, math.pi / 2, 0
 START_ORIENTATION = p.getQuaternionFromEuler([ROLL, PITCH, YAW])
 
 # Max Force (Nm) per joint
-MAX_TORQUE_MAP = {
+MAX_TORQUE_MAP_OLD = {
     "chest": [100, 100, 100],
     "neck": [10, 10, 10],
     "right_shoulder": [100, 100, 100],
@@ -33,6 +33,29 @@ MAX_TORQUE_MAP = {
     "left_knee": 150,
     "right_ankle": [40, 40, 40],
     "left_ankle": [40, 40, 40],
+}
+
+MAX_TORQUE_MAP = {
+    # --- ARMS (40Nm) ---
+    # Strong enough to do the pushup (requires ~38Nm),
+    # but limited so they don't act like "jackhammers" that break the floor.
+    "right_shoulder": [40, 40, 40],
+    "left_shoulder": [40, 40, 40],
+    "right_elbow": 40,
+    "left_elbow": 40,
+    # --- LEGS (90Nm) ---
+    # The "Engine." 90Nm is required to lift the 27kg upper body lever.
+    "right_hip": [90, 90, 90],
+    "left_hip": [90, 90, 90],
+    "right_knee": 90,
+    "left_knee": 90,
+    # --- ANKLES (25Nm) ---
+    # 25Nm provides balance. 40Nm was causing the "foot vibration" explosion.
+    "right_ankle": [25, 25, 25],
+    "left_ankle": [25, 25, 25],
+    # --- STABILIZERS ---
+    "neck": [5, 5, 5],
+    "chest": [45, 45, 45],
 }
 
 
@@ -69,7 +92,31 @@ def resetJointMotorsAndState(humanoid_id):
                 targetPosition=[0, 0, 0, 1],
                 force=[0, 0, 0],
             )
+        p.changeDynamics(
+            humanoid_id,
+            j,
+            lateralFriction=1.0,
+            linearDamping=0.0,
+            angularDamping=0.0,
+            jointDamping=0.7,  # <--- THIS STOPS THE FLAILING
+            maxJointVelocity=6.0,
+        )
 
+    # Fix zero-inertia and zero-mass for IDs -1, 5, and 8
+    # Using a small but stable inertia diagonal [0.001, 0.001, 0.001]
+
+    # ID -1: The Base Link
+    p.changeDynamics(
+        humanoid_id, -1, mass=0.1, localInertiaDiagonal=[0.001, 0.001, 0.001]
+    )
+
+    # ID 5: Right Wrist
+    p.changeDynamics(humanoid_id, 5, localInertiaDiagonal=[0.001, 0.001, 0.001])
+
+    # ID 8: Left Wrist
+    p.changeDynamics(humanoid_id, 8, localInertiaDiagonal=[0.001, 0.001, 0.001])
+
+    print("Dynamics updated: IDs -1, 5, and 8 now have non-zero inertia.")
     for link in [5, 8]:
         p.changeDynamics(humanoid_id, link, lateralFriction=10.0)
     for link in [11, 14]:
@@ -86,15 +133,16 @@ class HumanStandEnv(gymnasium.Env):
         self.episode_count = 0
         self.current_energy_cost = 0.0
 
-        self.target_height = 0.75
         self.weights = {
             "chest_height": 2.0,  # Primary motivator
             "root_height": 1.0,  # Secondary motivator
+            "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 1.0,  # Orientation weight
+            "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.1,  # Gated velocity (only works when low)
             "energy_cost": -0.05,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
-            "termination_penalty": -10.0,
+            "termination_penalty": -100.0,
         }
         self.foot_links = []
 
@@ -132,7 +180,9 @@ class HumanStandEnv(gymnasium.Env):
         self.current_energy_cost = 0.0
 
         # Randomize friction slightly to improve robustness
-        p.changeDynamics(self.plane_id, -1, lateralFriction=random.uniform(0.5, 1.2))
+        newFriction = random.uniform(0.8, 1.2)
+        p.changeDynamics(self.plane_id, -1, lateralFriction=newFriction)
+        print("Setting friction to: ", newFriction)
 
         resetJointMotorsAndState(self.humanoid_id)
         for _ in range(50):
@@ -206,13 +256,22 @@ class HumanStandEnv(gymnasium.Env):
         chest_vel_z = chest_state[6][2]  # Z-velocity in world space
         root_z = root_state[0][2]
 
+        head_index = 2
+        head_state = p.getLinkState(self.humanoid_id, head_index)
+
+        head_pos, head_orn = head_state[0], head_state[1]
+        head_z = head_pos[2]
+
         # 2. Orientation (Uprightness)
         rot_matrix = np.array(p.getMatrixFromQuaternion(chest_orn)).reshape(3, 3)
         chest_up_vector = rot_matrix[:, 2]  # The local Z-axis of the chest link
         uprightness = max(0, np.dot(chest_up_vector, [0, 0, 1]))
 
+        head_rot_matrix = np.array(p.getMatrixFromQuaternion(head_orn)).reshape(3, 3)
+        head_up_vector = head_rot_matrix[:, 2]
+        head_uprightness = max(0, np.dot(head_up_vector, [0, 0, 1]))
+
         # CONTACT DETECTION (The Cure for Helicopter Legs)
-        feet_contact_reward = 0.0
         contact_points = 0
         for link_idx in self.foot_links:
             # Check if this link is touching the floor (plane_id)
@@ -230,12 +289,12 @@ class HumanStandEnv(gymnasium.Env):
         # 3. REWARD COMPONENTS
 
         # A. Height (The Goal)
-        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
-        reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
+        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.132)
+        reward_root = self.weights["root_height"] * max(0, root_z - 0.108)
 
         # B. Uprightness (Scaled)
         reward_upright = self.weights["uprightness"] * (
-            uprightness * max(0, chest_z - 0.44)
+            uprightness * max(0, chest_z - 0.132)
         )
 
         # C. GATED VELOCITY (Anti-Popcorn Logic)
@@ -245,6 +304,15 @@ class HumanStandEnv(gymnasium.Env):
             reward_vel = self.weights["chest_vel"] * chest_vel_z
         else:
             reward_vel = 0.0
+
+        # NEW: NECK/HEAD REWARDS (Simplified)
+        reward_neck_height = self.weights["neck_height"] * max(0, head_z - 0.123)
+
+        # 2. Head Orientation
+        # Gated by height so we don't reward looking at the ceiling while lying on back.
+        reward_neck_orient = self.weights["neck_orientation"] * (
+            head_uprightness * max(0, head_z - 0.123)
+        )
 
         # D. ACTION PENALTY (New)
         # Penalize high action values to prevent flailing
@@ -258,7 +326,7 @@ class HumanStandEnv(gymnasium.Env):
         # --- CRITICAL: BELLY START PROTECTION ---
         # Only grant this if the chest is reasonably high (>0.6m)
         # Otherwise it will just lie on the floor and tap its feet.
-        if chest_z > 0.6:
+        if chest_z > 0.3:
             reward_feet = feet_contact_raw
         else:
             reward_feet = 0.0
@@ -268,7 +336,7 @@ class HumanStandEnv(gymnasium.Env):
         reward_term = 0.0
 
         # Terminate if chest touches ground (0.25) or flies away (2.0)
-        if chest_z < 0.25 or chest_z > 2.0:
+        if chest_z < 0.1 or chest_z > 1.8:
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -282,6 +350,8 @@ class HumanStandEnv(gymnasium.Env):
             + reward_survival
             + reward_feet
             + reward_term
+            + reward_neck_height
+            + reward_neck_orient
         )
 
         decomp = {
@@ -293,6 +363,8 @@ class HumanStandEnv(gymnasium.Env):
             "06_survival": reward_survival,
             "07_feet": reward_feet,
             "08_term": reward_term,
+            "09_neck_height": reward_neck_height,
+            "10_neck_uprightness": reward_neck_orient,
             "z_TOTAL": total_reward,
         }
 
@@ -315,7 +387,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -324,10 +396,13 @@ if __name__ == "__main__":
             INITIAL_POSITION,
             START_ORIENTATION,
             flags=p.URDF_USE_SELF_COLLISION,
+            globalScaling=0.3,
         )
 
         print("\n--- Humanoid Diagnostic Info ---")
         utils.print_joint_info(humanoid_id)
+        utils.print_dynamics_info(humanoid_id)
+        utils.print_link_states(humanoid_id)
 
         p.setTimeStep(1 / 240.0)
         p.setPhysicsEngineParameter(numSolverIterations=200)
@@ -362,8 +437,8 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=10_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run1",
+            tb_log_name="V13_Run1_test",
         )
 
-        model.save("humanoid_v12_final")
-        env.save("vec_normalize_v12.pkl")
+        model.save("humanoid_v13_final")
+        env.save("vec_normalize_v13.pkl")
