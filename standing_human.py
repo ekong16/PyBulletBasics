@@ -11,6 +11,7 @@ from stable_baselines3.common.vec_env import VecNormalize, VecFrameStack, DummyV
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
+import torch as th
 
 # ==========================================
 # GLOBAL VARS & CONFIG
@@ -263,7 +264,7 @@ class HumanStandEnv(gymnasium.Env):
         # 2. Head Orientation
         # Gated by height so we don't reward looking at the ceiling while lying on back.
         reward_neck_orient = self.weights["neck_orientation"] * (
-            head_uprightness * max(0, head_z - 0.123)
+            head_uprightness * max(0, head_z - 0.41)
         )
 
         # D. ACTION PENALTY (New)
@@ -288,7 +289,7 @@ class HumanStandEnv(gymnasium.Env):
         reward_term = 0.0
 
         # Terminate if chest touches ground (0.25) or flies away (2.0)
-        if chest_z < 0.25 or chest_z > 2.0:
+        if chest_z < 0.25 or chest_z > 6.0:
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -339,7 +340,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -365,11 +366,14 @@ if __name__ == "__main__":
         env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=10.0)
 
         # MODEL CONFIGURATION
-        # ent_coef kept low (0.0) as requested.
-        # learning_rate constant 5e-5 for stability.
+        # Define the policy architecture
+        policy_kwargs = dict(
+            activation_fn=th.nn.Tanh, net_arch=dict(pi=[256, 256], vf=[256, 256])
+        )
         model = PPO(
             "MlpPolicy",
             env,
+            policy_kwargs=policy_kwargs,
             verbose=1,
             learning_rate=5e-5,
             n_steps=4096,
@@ -379,16 +383,16 @@ if __name__ == "__main__":
             gae_lambda=0.95,
             clip_range=0.2,
             ent_coef=0.0,
-            vf_coef=0.5,
+            vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
         )
-
+        print(model.policy)
         print("--- Starting Training with Gated Velocity & Energy Penalty ---")
         model.learn(
             total_timesteps=10_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run1",
+            tb_log_name="V12_Run5",
         )
 
         model.save("humanoid_v12_final")
