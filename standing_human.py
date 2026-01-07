@@ -374,14 +374,14 @@ if __name__ == "__main__":
             "MlpPolicy",
             env,
             policy_kwargs=policy_kwargs,
-            use_sde=True,  # <--- Stops the flailing
-            sde_sample_freq=4,  # smooths noise every 4 steps
+            use_sde=False,  # <--- Stops the flailing
+            # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            learning_rate=5e-5,
+            learning_rate=2.5e-5,
             n_steps=4096,
             batch_size=512,
             n_epochs=5,
-            gamma=0.99,
+            gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.1,
             ent_coef=0.0,
@@ -394,7 +394,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=10_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run6",
+            tb_log_name="V12_Run10",
         )
 
         model.save("humanoid_v12_final")
