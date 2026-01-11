@@ -206,6 +206,7 @@ class HumanStandEnv(gymnasium.Env):
 
         chest_pos, chest_orn = chest_state[0], chest_state[1]
         chest_z = chest_pos[2]
+        raw_chest_z = chest_z
         chest_vel_z = chest_state[6][2]  # Z-velocity in world space
         root_z = root_state[0][2]
 
@@ -297,7 +298,7 @@ class HumanStandEnv(gymnasium.Env):
         reward_term = 0.0
 
         # Terminate if chest touches ground (0.25) or flies away (2.0)
-        if chest_z < 0.25 or chest_z > 6.0:
+        if chest_z < 0.25 or raw_chest_z > 5.0:
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -402,7 +403,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=50_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run13",
+            tb_log_name="V12_Run14",
         )
 
         model.save("humanoid_v12_final")
