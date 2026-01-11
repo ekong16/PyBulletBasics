@@ -54,4 +54,21 @@ with utils.PyBulletSim(gui=True) as client:
         print("DONE STEPPING")
 
     while True:
+        # 1. Get Physical States
+        # chest_state = p.getLinkState(my_humanoid_id, 1, computeLinkVelocity=1)
+        # root_state = p.getLinkState(my_humanoid_id, 0)
+
+        # chest_pos, chest_orn = chest_state[0], chest_state[1]
+        # chest_z = chest_pos[2]
+        # chest_vel_z = chest_state[6][2]  # Z-velocity in world space
+        # root_z = root_state[0][2]
+
+        # head_index = 2
+        # head_state = p.getLinkState(my_humanoid_id, head_index)
+
+        # head_pos, head_orn = head_state[0], head_state[1]
+        # head_z = head_pos[2]
+        # print("Head", head_z)
+        # print("Chest", chest_z)
+        # print("Root", root_z)
         p.stepSimulation()

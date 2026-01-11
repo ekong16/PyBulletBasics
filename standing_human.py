@@ -215,6 +215,14 @@ class HumanStandEnv(gymnasium.Env):
         head_pos, head_orn = head_state[0], head_state[1]
         head_z = head_pos[2]
 
+        TARGET_HEAD = 6.06
+        TARGET_CHEST = 4.96
+        TARGET_ROOT = 3.82
+
+        chest_z = min(chest_z, TARGET_CHEST)
+        root_z = min(root_z, TARGET_ROOT)
+        head_z = min(head_z, TARGET_HEAD)
+
         # 2. Orientation (Uprightness)
         rot_matrix = np.array(p.getMatrixFromQuaternion(chest_orn)).reshape(3, 3)
         chest_up_vector = rot_matrix[:, 2]  # The local Z-axis of the chest link
@@ -379,7 +387,7 @@ if __name__ == "__main__":
             verbose=1,
             learning_rate=2.5e-5,
             n_steps=4096,
-            batch_size=512,
+            batch_size=1024,
             n_epochs=5,
             gamma=0.995,
             gae_lambda=0.95,
@@ -392,9 +400,9 @@ if __name__ == "__main__":
         print(model.policy)
         print("--- Starting Training with Gated Velocity & Energy Penalty ---")
         model.learn(
-            total_timesteps=10_000_000,
+            total_timesteps=50_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run10",
+            tb_log_name="V12_Run13",
         )
 
         model.save("humanoid_v12_final")
