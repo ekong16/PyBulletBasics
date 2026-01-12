@@ -37,9 +37,23 @@ MAX_TORQUE_MAP = {
 }
 
 
-def linear_schedule(initial_value: float) -> Callable[[float], float]:
+def linear_schedule(
+    initial_value: float, min_value: float = 1e-6
+) -> Callable[[float], float]:
+    """
+    Decays the learning rate linearly from initial_value to min_value.
+    """
+
     def func(progress_remaining: float) -> float:
-        return progress_remaining * initial_value
+        # progress_remaining starts at 1.0 (start) and goes to 0.0 (end)
+
+        # Calculate the drop range
+        decay_range = initial_value - min_value
+
+        # Current rate = Minimum Floor + (Amount left to decay)
+        current_rate = min_value + (progress_remaining * decay_range)
+
+        return current_rate
 
     return func
 
@@ -377,7 +391,8 @@ if __name__ == "__main__":
         # MODEL CONFIGURATION
         # Define the policy architecture
         policy_kwargs = dict(
-            activation_fn=th.nn.Tanh, net_arch=dict(pi=[256, 256], vf=[256, 256])
+            activation_fn=th.nn.Tanh,
+            net_arch=dict(pi=[256, 256], vf=[256, 256], log_std_init=-1.0),
         )
         model = PPO(
             "MlpPolicy",
@@ -386,6 +401,7 @@ if __name__ == "__main__":
             use_sde=False,  # <--- Stops the flailing
             # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
+            # learning_rate=linear_schedule(2.5e-5, min_value=1.0e-6),
             learning_rate=2.5e-5,
             n_steps=4096,
             batch_size=1024,
@@ -403,7 +419,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=50_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run14",
+            tb_log_name="V12_Run17",
         )
 
         model.save("humanoid_v12_final")
