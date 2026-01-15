@@ -103,8 +103,8 @@ class HumanStandEnv(gymnasium.Env):
 
         self.target_height = 0.75
         self.weights = {
-            "chest_height": 2.0,  # Primary motivator
-            "root_height": 1.0,  # Secondary motivator
+            "chest_height": 3.0,  # Primary motivator
+            "root_height": 0.1,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 1.0,  # Orientation weight
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
@@ -392,7 +392,8 @@ if __name__ == "__main__":
         # Define the policy architecture
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
-            net_arch=dict(pi=[256, 256], vf=[256, 256], log_std_init=-1.0),
+            net_arch=dict(pi=[256, 256], vf=[256, 256]),
+            log_std_init=-0.5,
         )
         model = PPO(
             "MlpPolicy",
@@ -409,7 +410,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.1,
-            ent_coef=0.0,
+            ent_coef=0.01,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -419,7 +420,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=50_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run17",
+            tb_log_name="V12_Run19",
         )
 
         model.save("humanoid_v12_final")
