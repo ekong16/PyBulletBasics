@@ -109,7 +109,7 @@ class HumanStandEnv(gymnasium.Env):
             "uprightness": 1.0,  # Orientation weight
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.1,  # Gated velocity (only works when low)
-            "energy_cost": -0.05,  # PENALTY: Applied to sum(action^2)
+            "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
@@ -402,15 +402,15 @@ if __name__ == "__main__":
             use_sde=False,  # <--- Stops the flailing
             # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            # learning_rate=linear_schedule(2.5e-5, min_value=1.0e-6),
-            learning_rate=2.5e-5,
+            learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
+            # learning_rate=2.5e-5,
             n_steps=4096,
             batch_size=1024,
             n_epochs=5,
             gamma=0.995,
             gae_lambda=0.95,
-            clip_range=0.1,
-            ent_coef=0.01,
+            clip_range=0.2,
+            ent_coef=0.005,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -420,7 +420,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=50_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run19",
+            tb_log_name="V12_Run21",
         )
 
         model.save("humanoid_v12_final")
