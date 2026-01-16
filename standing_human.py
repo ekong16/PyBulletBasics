@@ -410,7 +410,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.005,
+            ent_coef=linear_schedule(0.005, 0.0),
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
