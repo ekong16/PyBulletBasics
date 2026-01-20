@@ -67,6 +67,48 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
+class GravityCurriculumWrapper(gymnasium.Wrapper):
+    def __init__(self, env, total_timesteps=25_000_000, start_g=-2.0, end_g=-9.81):
+        super().__init__(env)
+        self.total_timesteps = total_timesteps
+        self.start_g = start_g
+        self.end_g = end_g
+        self.current_step = 0
+
+    def step(self, action):
+        # 1. Update Step Count
+        self.current_step += 1
+
+        # 2. Calculate Gravity
+        progress = min(1.0, self.current_step / self.total_timesteps)
+        # current_gravity = 5
+        current_gravity = self.start_g + (self.end_g - self.start_g) * progress
+
+        # 3. Apply Gravity
+        # Ensure '0' matches your PyBullet client ID if you have multiple sims.
+        p.setGravity(0, 0, current_gravity)
+
+        # 4. Standard Step (Gymnasium returns 5 values)
+        # obs, reward, terminated, truncated, info
+        step_result = self.env.step(action)
+
+        # Safety Check: Handle both Old Gym (4 vals) and New Gymnasium (5 vals)
+        if len(step_result) == 5:
+            obs, reward, terminated, truncated, info = step_result
+            info["gravity_z"] = current_gravity
+            return obs, reward, terminated, truncated, info
+        else:
+            # Fallback if your specific env is still returning 4 values
+            obs, reward, done, info = step_result
+            info["gravity_z"] = current_gravity
+            return obs, reward, done, info
+
+    def reset(self, **kwargs):
+        # FIX: Gymnasium requires passing 'seed' and 'options' down the chain.
+        # We use **kwargs to catch everything SB3 throws at it.
+        return self.env.reset(**kwargs)
+
+
 def resetJointMotorsAndState(humanoid_id):
     p.resetBasePositionAndOrientation(humanoid_id, INITIAL_POSITION, START_ORIENTATION)
     for j in range(p.getNumJoints(humanoid_id)):
@@ -363,7 +405,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -382,7 +424,12 @@ if __name__ == "__main__":
         p.setTimeStep(1 / 240.0)
         p.setPhysicsEngineParameter(numSolverIterations=200)
 
+        TOTAL_TIMESTEPS = 25_000_000
+
         env = HumanStandEnv(humanoid_id, plane_id)
+        env = GravityCurriculumWrapper(
+            env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
+        )
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
@@ -418,9 +465,9 @@ if __name__ == "__main__":
         print(model.policy)
         print("--- Starting Training with Gated Velocity & Energy Penalty ---")
         model.learn(
-            total_timesteps=25_000_000,
+            total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run24",
+            tb_log_name="V12_Run25_test",
         )
 
         model.save("humanoid_v12_final")
