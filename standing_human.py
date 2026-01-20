@@ -104,9 +104,9 @@ class HumanStandEnv(gymnasium.Env):
         self.target_height = 0.75
         self.weights = {
             "chest_height": 3.0,  # Primary motivator
-            "root_height": 0.1,  # Secondary motivator
+            "root_height": 1.5,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
-            "uprightness": 1.0,  # Orientation weight
+            "uprightness": 3.0,  # Orientation weight
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.1,  # Gated velocity (only works when low)
             "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
@@ -410,7 +410,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=linear_schedule(0.005, 0.0),
+            ent_coef=0.001,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -418,9 +418,9 @@ if __name__ == "__main__":
         print(model.policy)
         print("--- Starting Training with Gated Velocity & Energy Penalty ---")
         model.learn(
-            total_timesteps=50_000_000,
+            total_timesteps=25_000_000,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run21",
+            tb_log_name="V12_Run24",
         )
 
         model.save("humanoid_v12_final")
