@@ -67,6 +67,66 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
+class PuppetMasterWrapper(gymnasium.Wrapper):
+    def __init__(self, env, humanoid_id, total_timesteps=50_000_000):
+        super().__init__(env)
+        self.humanoid_id = humanoid_id
+        self.total_timesteps = total_timesteps
+        self.current_step = 0
+
+        # Calculate Total Mass for the Assist
+        # We need this to know how much 1G of force is.
+        self.total_mass = sum(
+            [
+                p.getDynamicsInfo(humanoid_id, i)[0]
+                for i in range(p.getNumJoints(humanoid_id))
+            ]
+        )
+        base_mass = p.getDynamicsInfo(humanoid_id, -1)[0]
+        self.total_mass += base_mass
+
+    def step(self, action):
+        self.current_step += 1
+
+        # 1. Calculate Assist Ratio (Starts at 100%, ends at 0%)
+        progress = min(1.0, self.current_step / self.total_timesteps)
+        assist_ratio = 1.0 - progress
+
+        # 2. Calculate Force (Pure World Z-Axis Lift)
+        # We apply slightly more than 1G (1.2x) at the start to ensure lift-off.
+        lift_force_z = self.total_mass * 9.81 * (assist_ratio * 1.2)
+        # lift_force_z = 2000
+
+        # 3. Get Current Position of the Pelvis (Base)
+        # We need the World coordinates to know where to pull.
+        pos, orn = p.getBasePositionAndOrientation(self.humanoid_id)
+
+        # 4. Apply Force in WORLD FRAME (The Fix)
+        # Force: [0, 0, Lift] -> Always points to the sky.
+        # Position: pos -> Always attached to the pelvis center.
+        try:
+            p.applyExternalForce(
+                self.humanoid_id,
+                -1,  # Apply to Base Link
+                [0, 0, lift_force_z],  # Force Vector (World Frame)
+                pos,  # Position to attach (World Frame)
+                p.WORLD_FRAME,  # <--- THE CRITICAL FIX
+            )
+        except:  # noqa: E722
+            pass
+
+        # Debug Print (Verify it works)
+        if self.current_step % 5000 == 0:
+            print(
+                f"--> [PuppetMaster] Assist: {assist_ratio:.2%} | Lifting UP with: {lift_force_z:.2f}N"
+            )
+
+        return self.env.step(action)
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
+
+
 class GravityCurriculumWrapper(gymnasium.Wrapper):
     def __init__(self, env, total_timesteps=25_000_000, start_g=-2.0, end_g=-9.81):
         super().__init__(env)
@@ -406,7 +466,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -425,12 +485,14 @@ if __name__ == "__main__":
         p.setTimeStep(1 / 240.0)
         p.setPhysicsEngineParameter(numSolverIterations=200)
 
-        TOTAL_TIMESTEPS = 25_000_000
+        TOTAL_TIMESTEPS = 50_000_000
 
         env = HumanStandEnv(humanoid_id, plane_id)
-        env = GravityCurriculumWrapper(
-            env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
-        )
+        # env = GravityCurriculumWrapper(
+        #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
+        # )
+        env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
+
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
@@ -468,7 +530,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run25",
+            tb_log_name="V12_Run27_Test",
         )
 
         model.save("humanoid_v12_final")
