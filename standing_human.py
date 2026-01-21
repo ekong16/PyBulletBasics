@@ -206,12 +206,12 @@ class HumanStandEnv(gymnasium.Env):
         self.target_height = 0.75
         self.weights = {
             "chest_height": 3.0,  # Primary motivator
-            "root_height": 1.5,  # Secondary motivator
+            "root_height": 5.0,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 3.0,  # Orientation weight
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
-            "chest_vel": 0.1,  # Gated velocity (only works when low)
+            "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
@@ -466,7 +466,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -520,7 +520,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.001,
+            ent_coef=0.01,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -530,7 +530,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run27_Test",
+            tb_log_name="V12_Run27",
         )
 
         model.save("humanoid_v12_final")
