@@ -149,6 +149,7 @@ class HumanStandEnv(gymnasium.Env):
             "root_height": 1.5,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 3.0,  # Orientation weight
+            "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.1,  # Gated velocity (only works when low)
             "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
@@ -303,7 +304,7 @@ class HumanStandEnv(gymnasium.Env):
 
         # Reward 1.0 per foot that is grounded.
         # This pays +2.0 for a stable stand, which is HUGE.
-        feet_contact_raw = 1.0 * contact_points
+        feet_contact_raw = contact_points
 
         # 3. REWARD COMPONENTS
 
@@ -345,7 +346,7 @@ class HumanStandEnv(gymnasium.Env):
         # Only grant this if the chest is reasonably high (>0.6m)
         # Otherwise it will just lie on the floor and tap its feet.
         if chest_z > 0.6:
-            reward_feet = feet_contact_raw
+            reward_feet = self.weights["feet_contact"] * feet_contact_raw
         else:
             reward_feet = 0.0
 
@@ -405,7 +406,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -467,7 +468,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run25_test",
+            tb_log_name="V12_Run25",
         )
 
         model.save("humanoid_v12_final")
