@@ -74,57 +74,52 @@ class PuppetMasterWrapper(gymnasium.Wrapper):
         self.total_timesteps = total_timesteps
         self.current_step = 0
 
-        # Calculate Total Mass for the Assist
-        # We need this to know how much 1G of force is.
+        # Calculate Mass
         self.total_mass = sum(
             [
                 p.getDynamicsInfo(humanoid_id, i)[0]
                 for i in range(p.getNumJoints(humanoid_id))
             ]
         )
-        base_mass = p.getDynamicsInfo(humanoid_id, -1)[0]
-        self.total_mass += base_mass
+        self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]
 
     def step(self, action):
         self.current_step += 1
 
-        # 1. Calculate Assist Ratio (Starts at 100%, ends at 0%)
-        progress = min(1.0, self.current_step / self.total_timesteps)
-        assist_ratio = 1.0 - progress
+        # --- THE FIX: GOLDILOCKS PLATEAU ---
+        # We hold the force at the "Sweet Spot" (0.85G) where it learned to squat.
+        plateau_steps = 15_000_000
 
-        # 2. Calculate Force (Pure World Z-Axis Lift)
-        # We apply slightly more than 1G (1.2x) at the start to ensure lift-off.
-        lift_force_z = self.total_mass * 9.81 * (assist_ratio * 1.2)
-        # lift_force_z = 2000
+        if self.current_step < plateau_steps:
+            # Phase 1: THE GYM
+            # Hold steady at 0.85 (The Peak of Run #6)
+            # This provides traction (no flailing) but strong support.
+            assist_ratio = 0.85
+        else:
+            # Phase 2: THE FADE
+            # Scale from 0.85 down to 0.0 over the remaining steps
+            remaining_steps = self.total_timesteps - plateau_steps
+            steps_into_phase = self.current_step - plateau_steps
 
-        # 3. Get Current Position of the Pelvis (Base)
-        # We need the World coordinates to know where to pull.
-        pos, orn = p.getBasePositionAndOrientation(self.humanoid_id)
+            # Linear decay from 0.85 -> 0.0
+            progress = min(1.0, steps_into_phase / remaining_steps)
+            assist_ratio = 0.85 * (1.0 - progress)
 
-        # 4. Apply Force in WORLD FRAME (The Fix)
-        # Force: [0, 0, Lift] -> Always points to the sky.
-        # Position: pos -> Always attached to the pelvis center.
+        # Apply Force (1.0 * Mass * Ratio)
+        # We use 1.0 (Earth G) as base, scaled by ratio.
+        lift_force_z = self.total_mass * 9.81 * assist_ratio
+
+        # Apply to CHEST (Link 1)
         try:
+            link_state = p.getLinkState(self.humanoid_id, 1)
+            chest_pos = link_state[0]
             p.applyExternalForce(
-                self.humanoid_id,
-                -1,  # Apply to Base Link
-                [0, 0, lift_force_z],  # Force Vector (World Frame)
-                pos,  # Position to attach (World Frame)
-                p.WORLD_FRAME,  # <--- THE CRITICAL FIX
+                self.humanoid_id, 1, [0, 0, lift_force_z], chest_pos, p.WORLD_FRAME
             )
-        except:  # noqa: E722
+        except:
             pass
 
-        # Debug Print (Verify it works)
-        if self.current_step % 5000 == 0:
-            print(
-                f"--> [PuppetMaster] Assist: {assist_ratio:.2%} | Lifting UP with: {lift_force_z:.2f}N"
-            )
-
         return self.env.step(action)
-
-    def reset(self, **kwargs):
-        return self.env.reset(**kwargs)
 
 
 class GravityCurriculumWrapper(gymnasium.Wrapper):
@@ -205,8 +200,8 @@ class HumanStandEnv(gymnasium.Env):
 
         self.target_height = 0.75
         self.weights = {
-            "chest_height": 3.0,  # Primary motivator
-            "root_height": 5.0,  # Secondary motivator
+            "chest_height": 5.0,  # Primary motivator
+            "root_height": 2.0,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 3.0,  # Orientation weight
             "feet_contact": 5.0,
@@ -520,7 +515,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.01,
+            ent_coef=0.001,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -530,7 +525,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run27",
+            tb_log_name="V12_Run28",
         )
 
         model.save("humanoid_v12_final")
