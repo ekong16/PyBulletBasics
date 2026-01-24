@@ -86,30 +86,42 @@ class PuppetMasterWrapper(gymnasium.Wrapper):
     def step(self, action):
         self.current_step += 1
 
-        # --- THE FIX: GOLDILOCKS PLATEAU ---
-        # We hold the force at the "Sweet Spot" (0.85G) where it learned to squat.
-        plateau_steps = 15_000_000
-
-        if self.current_step < plateau_steps:
-            # Phase 1: THE GYM
-            # Hold steady at 0.85 (The Peak of Run #6)
-            # This provides traction (no flailing) but strong support.
-            assist_ratio = 0.85
+        assist_factor = 3.25
+        # 1. Determine the MAXIMUM force available (The "Spotter's Strength")
+        if self.current_step < 5_000_000:
+            # Phase 1: Full Strength Spotter
+            current_max_assist = assist_factor
         else:
-            # Phase 2: THE FADE
-            # Scale from 0.85 down to 0.0 over the remaining steps
-            remaining_steps = self.total_timesteps - plateau_steps
-            steps_into_phase = self.current_step - plateau_steps
+            # Phase 2: Spotter gets tired (2.0 -> 0.0)
+            total_decay_steps = self.total_timesteps - 5_000_000
+            steps_into_decay = self.current_step - 5_000_000
+            progress = steps_into_decay / total_decay_steps
+            current_max_assist = assist_factor * (1.0 - progress)
 
-            # Linear decay from 0.85 -> 0.0
-            progress = min(1.0, steps_into_phase / remaining_steps)
-            assist_ratio = 0.85 * (1.0 - progress)
+            if self.current_step % 2048 == 0:
+                print("progress", progress)
+                print("current max assist", current_max_assist)
+                print("Mass", self.total_mass)
 
-        # Apply Force (1.0 * Mass * Ratio)
-        # We use 1.0 (Earth G) as base, scaled by ratio.
-        lift_force_z = self.total_mass * 9.81 * assist_ratio
+        # 2. Apply the CEILING CHECK (The "Safety Switch")
+        # This logic applies to BOTH phases.
+        try:
+            # [0]=Pos, [2]=Z
+            chest_z = p.getLinkState(self.humanoid_id, 1)[0][2]
+        except:
+            chest_z = 0.0
 
-        # Apply to CHEST (Link 1)
+        if chest_z < 5.1:
+            # Robot is low? Use whatever strength we have left.
+            final_assist = current_max_assist
+        else:
+            # Robot is high? Cut power instantly.
+            # This prevents the "Phase 2 Launch" you predicted.
+            final_assist = 0.0
+
+        # 3. Apply Force
+        lift_force_z = self.total_mass * 9.81 * final_assist
+
         try:
             link_state = p.getLinkState(self.humanoid_id, 1)
             chest_pos = link_state[0]
@@ -409,8 +421,8 @@ class HumanStandEnv(gymnasium.Env):
         done = False
         reward_term = 0.0
 
-        # Terminate if chest touches ground (0.25) or flies away (2.0)
-        if chest_z < 0.25 or raw_chest_z > 5.0:
+        # Terminate if chest touches ground (0.25) or flies away (6.0)
+        if chest_z < 0.25 or raw_chest_z > 6.0:
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -525,7 +537,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run28",
+            tb_log_name="V12_Run30",
         )
 
         model.save("humanoid_v12_final")
