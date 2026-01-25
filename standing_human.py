@@ -36,6 +36,10 @@ MAX_TORQUE_MAP = {
     "left_ankle": [40, 40, 40],
 }
 
+TARGET_HEAD = 6.06
+TARGET_CHEST = 4.96
+TARGET_ROOT = 3.82
+
 
 def linear_schedule(
     initial_value: float, min_value: float = 1e-6
@@ -68,13 +72,15 @@ class RewardLoggerCallback(BaseCallback):
 
 
 class PuppetMasterWrapper(gymnasium.Wrapper):
-    def __init__(self, env, humanoid_id, total_timesteps=50_000_000):
+    def __init__(
+        self, env, humanoid_id, total_timesteps=20_000_000
+    ):  # Changed to 20M (Fail Fast)
         super().__init__(env)
         self.humanoid_id = humanoid_id
         self.total_timesteps = total_timesteps
         self.current_step = 0
 
-        # Calculate Mass
+        # Calculate Mass (Kept your logic)
         self.total_mass = sum(
             [
                 p.getDynamicsInfo(humanoid_id, i)[0]
@@ -83,52 +89,80 @@ class PuppetMasterWrapper(gymnasium.Wrapper):
         )
         self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]
 
+        # Calculate Weight (Gravity Force)
+        self.robot_weight = self.total_mass * 9.81
+        print("ROBOT WEIGHT", self.robot_weight)
+
     def step(self, action):
         self.current_step += 1
 
-        assist_factor = 3.25
-        # 1. Determine the MAXIMUM force available (The "Spotter's Strength")
-        if self.current_step < 5_000_000:
-            # Phase 1: Full Strength Spotter
-            current_max_assist = assist_factor
+        # --- 1. CONFIGURATION: THE "MOON GRAVITY" SETUP ---
+        # We attach the spring HIGH (10m) so it never goes slack.
+        SPRING_ANCHOR = 10.0
+
+        # Stiffness 0.16:
+        #   - At Floor (Dist 10m): Pulls 1.6G (Strong Lift)
+        #   - At Target 5m (Dist 5m): Pulls 0.8G (Perfect Anti-Gravity)
+        start_kp = self.robot_weight * 0.16
+        start_kd = self.total_mass * 0.1
+
+        # --- 2. SCHEDULE: WARMUP -> DECAY -> REALITY ---
+        WARMUP_END = 2_000_000  # Phase 1: Full help until 2M
+        DECAY_END = 10_000_000  # Phase 2: Fade out until 10M
+
+        if self.current_step < WARMUP_END:
+            # Phase 1: Full Moon Gravity (No Decay)
+            current_kp = start_kp
+            current_kd = start_kd
+            phase = "WARMUP"
+        elif self.current_step < DECAY_END:
+            # Phase 2: Linear Decay
+            # 0.0 at warmup end -> 1.0 at decay end
+            progress = (self.current_step - WARMUP_END) / (DECAY_END - WARMUP_END)
+            current_kp = start_kp * (1.0 - progress)
+            current_kd = start_kd * (1.0 - progress)
+            phase = "DECAY"
         else:
-            # Phase 2: Spotter gets tired (2.0 -> 0.0)
-            total_decay_steps = self.total_timesteps - 5_000_000
-            steps_into_decay = self.current_step - 5_000_000
-            progress = steps_into_decay / total_decay_steps
-            current_max_assist = assist_factor * (1.0 - progress)
+            # Phase 3: Zero Assist (The Real World)
+            current_kp = 0.0
+            current_kd = 0.0
+            phase = "REAL"
 
-            if self.current_step % 2048 == 0:
-                print("progress", progress)
-                print("current max assist", current_max_assist)
-                print("Mass", self.total_mass)
-
-        # 2. Apply the CEILING CHECK (The "Safety Switch")
-        # This logic applies to BOTH phases.
-        try:
-            # [0]=Pos, [2]=Z
-            chest_z = p.getLinkState(self.humanoid_id, 1)[0][2]
-        except:
-            chest_z = 0.0
-
-        if chest_z < 5.1:
-            # Robot is low? Use whatever strength we have left.
-            final_assist = current_max_assist
-        else:
-            # Robot is high? Cut power instantly.
-            # This prevents the "Phase 2 Launch" you predicted.
-            final_assist = 0.0
-
-        # 3. Apply Force
-        lift_force_z = self.total_mass * 9.81 * final_assist
-
-        try:
-            link_state = p.getLinkState(self.humanoid_id, 1)
-            chest_pos = link_state[0]
-            p.applyExternalForce(
-                self.humanoid_id, 1, [0, 0, lift_force_z], chest_pos, p.WORLD_FRAME
+        # Logging (Every 50k steps)
+        if self.current_step % 50_000 == 0:
+            print(
+                f"Step: {self.current_step} | Phase: {phase} | Kp: {current_kp:.2f} | Kd: {current_kd:.1f}"
             )
-        except:
+
+        # --- 3. CALCULATE FORCE ---
+        try:
+            # Only calculate if assist is active
+            if current_kp > 0.001:
+                link_state = p.getLinkState(self.humanoid_id, 1, computeLinkVelocity=1)
+                current_z = link_state[0][2]
+                current_vel_z = link_state[6][2]
+
+                # CRITICAL: Pull towards the HIGH ANCHOR (10.0), not the chest target
+                error_pos = SPRING_ANCHOR - current_z
+                error_vel = 0.0 - current_vel_z
+
+                spring_force_z = (current_kp * error_pos) + (current_kd * error_vel)
+
+                # Safety Clips
+                spring_force_z = max(0.0, spring_force_z)  # No pushing down
+                spring_force_z = min(
+                    spring_force_z, self.robot_weight * 3.0
+                )  # Safety cap
+
+                p.applyExternalForce(
+                    self.humanoid_id,
+                    1,
+                    [0, 0, spring_force_z],
+                    link_state[0],
+                    p.WORLD_FRAME,
+                )
+
+        except Exception as e:
             pass
 
         return self.env.step(action)
@@ -208,6 +242,8 @@ class HumanStandEnv(gymnasium.Env):
         self.max_steps = 1024  # Increased slightly to allow for stability testing
         self.steps_count = 0
         self.episode_count = 0
+        self.total_global_steps = 0
+
         self.current_energy_cost = 0.0
 
         self.target_height = 0.75
@@ -218,8 +254,8 @@ class HumanStandEnv(gymnasium.Env):
             "uprightness": 3.0,  # Orientation weight
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
-            "chest_vel": 0.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
+            "chest_vel": 1.0,  # Gated velocity (only works when low)
+            "energy_cost": -0.00,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
@@ -252,6 +288,56 @@ class HumanStandEnv(gymnasium.Env):
                 self.foot_links.append(j)
         print(f"DEBUG: Found foot links at indices: {self.foot_links}")
 
+    def _apply_spring_force(self):
+        # CONFIG
+        SPRING_ANCHOR = 10.0
+        START_KP = self.robot_weight * 0.16
+        START_KD = self.total_mass * 0.1
+
+        # SCHEDULE
+        WARMUP_END = 2_000_000
+        DECAY_END = 10_000_000
+
+        # LOGIC
+        if self.total_global_steps < WARMUP_END:
+            # Phase 1: Full Help
+            current_kp = START_KP
+            current_kd = START_KD
+        elif self.total_global_steps < DECAY_END:
+            # Phase 2: Linear Decay
+            progress = (self.total_global_steps - WARMUP_END) / (DECAY_END - WARMUP_END)
+            current_kp = START_KP * (1.0 - progress)
+            current_kd = START_KD * (1.0 - progress)
+        else:
+            # Phase 3: Real World (Optimization)
+            return
+
+        # PHYSICS
+        try:
+            link_state = p.getLinkState(self.humanoid_id, 1, computeLinkVelocity=1)
+            current_z = link_state[0][2]
+            current_vel_z = link_state[6][2]
+
+            error_pos = SPRING_ANCHOR - current_z
+            error_vel = 0.0 - current_vel_z
+
+            spring_force_z = (current_kp * error_pos) + (current_kd * error_vel)
+            spring_force_z = max(0.0, min(spring_force_z, self.robot_weight * 3.0))
+
+            p.applyExternalForce(
+                self.humanoid_id,
+                1,
+                [0, 0, spring_force_z],
+                link_state[0],
+                p.WORLD_FRAME,
+            )
+
+            # Debug Print (Optional: Check first step)
+            if self.total_global_steps == 1:
+                print(f"!!! FORCE CHECK: Applied {spring_force_z:.1f}N !!!")
+        except:
+            pass
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.episode_count += 1
@@ -267,6 +353,8 @@ class HumanStandEnv(gymnasium.Env):
         return self._get_obs(), {}
 
     def step(self, action):
+        self.total_global_steps += 1
+
         printOn = True
         printStep = self.steps_count % 256 == 0
         if printStep and printOn:
@@ -312,6 +400,7 @@ class HumanStandEnv(gymnasium.Env):
                 action_idx += 3
 
         for _ in range(4):
+            self._apply_spring_force()
             p.stepSimulation()
 
         obs = self._get_obs()
@@ -339,10 +428,6 @@ class HumanStandEnv(gymnasium.Env):
 
         head_pos, head_orn = head_state[0], head_state[1]
         head_z = head_pos[2]
-
-        TARGET_HEAD = 6.06
-        TARGET_CHEST = 4.96
-        TARGET_ROOT = 3.82
 
         chest_z = min(chest_z, TARGET_CHEST)
         root_z = min(root_z, TARGET_ROOT)
@@ -387,10 +472,12 @@ class HumanStandEnv(gymnasium.Env):
         # C. GATED VELOCITY (Anti-Popcorn Logic)
         # Only reward upward velocity if we are ON THE FLOOR (< 0.6m).
         # Once standing, velocity reward is ZERO.
-        if chest_z < 0.6:
-            reward_vel = self.weights["chest_vel"] * chest_vel_z
-        else:
-            reward_vel = 0.0
+        # if chest_z < 0.6:
+        #     reward_vel = self.weights["chest_vel"] * chest_vel_z
+        # else:
+        #     reward_vel = 0.0
+        # No gate
+        reward_vel = self.weights["chest_vel"] * chest_vel_z
 
         # NEW: NECK/HEAD REWARDS (Simplified)
         reward_neck_height = self.weights["neck_height"] * max(0, head_z - 0.41)
@@ -473,7 +560,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -492,13 +579,13 @@ if __name__ == "__main__":
         p.setTimeStep(1 / 240.0)
         p.setPhysicsEngineParameter(numSolverIterations=200)
 
-        TOTAL_TIMESTEPS = 50_000_000
+        TOTAL_TIMESTEPS = 20_000_000
 
         env = HumanStandEnv(humanoid_id, plane_id)
         # env = GravityCurriculumWrapper(
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
-        env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
+        # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
 
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -519,15 +606,15 @@ if __name__ == "__main__":
             use_sde=False,  # <--- Stops the flailing
             # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
-            # learning_rate=2.5e-5,
+            # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
+            learning_rate=1.0e-4,
             n_steps=4096,
             batch_size=1024,
             n_epochs=5,
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.001,
+            ent_coef=0.000,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -537,7 +624,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run30",
+            tb_log_name="V12_Run36_TEST",
         )
 
         model.save("humanoid_v12_final")
