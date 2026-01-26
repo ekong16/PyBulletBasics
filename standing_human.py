@@ -21,7 +21,7 @@ ROLL, PITCH, YAW = 0, math.pi / 2, 0
 START_ORIENTATION = p.getQuaternionFromEuler([ROLL, PITCH, YAW])
 
 # Max Force (Nm) per joint
-MAX_TORQUE_MAP = {
+MAX_TORQUE_MAP_OLD = {
     "chest": [100, 100, 100],
     "neck": [10, 10, 10],
     "right_shoulder": [100, 100, 100],
@@ -34,6 +34,21 @@ MAX_TORQUE_MAP = {
     "left_knee": 150,
     "right_ankle": [40, 40, 40],
     "left_ankle": [40, 40, 40],
+}
+
+MAX_TORQUE_MAP = {
+    "chest": [500, 500, 500],
+    "neck": [200, 200, 200],  # Fixed dangling neck
+    "right_shoulder": [200, 200, 200],
+    "left_shoulder": [200, 200, 200],
+    "right_elbow": 100,
+    "left_elbow": 100,
+    "right_hip": [800, 800, 800],  # Massive hip power for 6m lever
+    "left_hip": [800, 800, 800],
+    "right_knee": 800,  # Massive knee power for crouching
+    "left_knee": 800,
+    "right_ankle": [400, 400, 400],  # Strong ankles to stop toppling
+    "left_ankle": [400, 400, 400],
 }
 
 TARGET_HEAD = 6.06
@@ -246,7 +261,21 @@ class HumanStandEnv(gymnasium.Env):
 
         self.current_energy_cost = 0.0
 
-        self.target_height = 0.75
+        self.total_mass = sum(
+            [
+                p.getDynamicsInfo(humanoid_id, i)[0]
+                for i in range(p.getNumJoints(humanoid_id))
+            ]
+        )
+        self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]  # Add Base Mass
+        self.robot_weight = self.total_mass * 9.81
+
+        self.current_kp = 0.0
+        self.current_kd = 0.0
+
+        print(f"DEBUG: Robot Total Mass: {self.total_mass:.2f} kg")
+        print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
+
         self.weights = {
             "chest_height": 5.0,  # Primary motivator
             "root_height": 2.0,  # Secondary motivator
@@ -266,33 +295,71 @@ class HumanStandEnv(gymnasium.Env):
     def _init_spaces(self):
         n_joints = p.getNumJoints(self.humanoid_id)
         self.dof_per_joint = []
-        for j in range(n_joints):
-            jt = p.getLinkState(self.humanoid_id, j)
-            jt = p.getJointInfo(self.humanoid_id, j)[2]
-            self.dof_per_joint.append(
-                3 if jt == p.JOINT_SPHERICAL else (1 if jt == p.JOINT_REVOLUTE else 0)
-            )
+        obs_dim = 0
 
-        # Action space is normalized (-1 to 1)
+        for j in range(n_joints):
+            jt = p.getJointInfo(self.humanoid_id, j)[2]
+            if jt == p.JOINT_SPHERICAL:
+                self.dof_per_joint.append(3)  # Action: 3 Torques
+                obs_dim += 7  # Obs: 4 Quat + 3 Vel
+            elif jt == p.JOINT_REVOLUTE:
+                self.dof_per_joint.append(1)  # Action: 1 Torque
+                obs_dim += 2  # Obs: 1 Angle + 1 Vel
+            else:
+                self.dof_per_joint.append(0)
+
         self.action_space = spaces.Box(
             low=-1, high=1, shape=(sum(self.dof_per_joint),), dtype=np.float32
         )
+
+        # Obs Space breakdown:
+        # 1. Joint Data (obs_dim)
+        # 2. Root Pos (3) + Root Orn (4) + Root AngVel (3) = 10
+        # 3. Assist Factors (Kp, Kd) = 2
+        # Total Extras = 12
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(n_joints * 2 + 7,), dtype=np.float32
+            low=-np.inf, high=np.inf, shape=(obs_dim + 12,), dtype=np.float32
         )
+
+        # Foot logic unchanged
         self.foot_links = []
-        for j in range(p.getNumJoints(self.humanoid_id)):
+        for j in range(n_joints):
             info = p.getJointInfo(self.humanoid_id, j)
             link_name = info[12].decode("utf-8")
             if "foot" in link_name or "ankle" in link_name:
                 self.foot_links.append(j)
         print(f"DEBUG: Found foot links at indices: {self.foot_links}")
 
+    # def _init_spaces(self):
+    #     n_joints = p.getNumJoints(self.humanoid_id)
+    #     self.dof_per_joint = []
+    #     for j in range(n_joints):
+    #         jt = p.getLinkState(self.humanoid_id, j)
+    #         jt = p.getJointInfo(self.humanoid_id, j)[2]
+    #         self.dof_per_joint.append(
+    #             3 if jt == p.JOINT_SPHERICAL else (1 if jt == p.JOINT_REVOLUTE else 0)
+    #         )
+
+    #     # Action space is normalized (-1 to 1)
+    #     self.action_space = spaces.Box(
+    #         low=-1, high=1, shape=(sum(self.dof_per_joint),), dtype=np.float32
+    #     )
+    #     self.observation_space = spaces.Box(
+    #         low=-np.inf, high=np.inf, shape=(n_joints * 2 + 7,), dtype=np.float32
+    #     )
+    #     self.foot_links = []
+    #     for j in range(p.getNumJoints(self.humanoid_id)):
+    #         info = p.getJointInfo(self.humanoid_id, j)
+    #         link_name = info[12].decode("utf-8")
+    #         if "foot" in link_name or "ankle" in link_name:
+    #             self.foot_links.append(j)
+    #     print(f"DEBUG: Found foot links at indices: {self.foot_links}")
+
     def _apply_spring_force(self):
         # CONFIG
         SPRING_ANCHOR = 10.0
         START_KP = self.robot_weight * 0.16
-        START_KD = self.total_mass * 0.1
+        START_KD = self.total_mass * 2.5
 
         # SCHEDULE
         WARMUP_END = 2_000_000
@@ -309,6 +376,8 @@ class HumanStandEnv(gymnasium.Env):
             current_kp = START_KP * (1.0 - progress)
             current_kd = START_KD * (1.0 - progress)
         else:
+            self.current_kp = 0.0
+            self.current_kd = 0.0
             # Phase 3: Real World (Optimization)
             return
 
@@ -367,33 +436,94 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
+        # --- POWER GOVERNOR ---
+        # 0M Steps: 10% Strength (Baby)
+        # 10M Steps: 100% Strength (Adult)
+        # This matches the Spring Decay timeline.
+        RAMP_STEPS = 10_000_000
+        min_scale = 0.1
+        if self.total_global_steps < RAMP_STEPS:
+            progress = self.total_global_steps / RAMP_STEPS
+            torque_scale = min_scale + (progress * (1.0 - min_scale))
+        else:
+            torque_scale = 1.0
+
+        # action_idx = 0
+        # for j in range(p.getNumJoints(self.humanoid_id)):
+        #     name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
+        #     if name not in MAX_TORQUE_MAP:
+        #         continue
+
+        #     max_f = np.array(MAX_TORQUE_MAP[name]) * torque_scale
+
+        #     if self.dof_per_joint[j] == 1:
+        #         torque = action[action_idx] * max_f
+        #         if printStep and printOn:
+        #             print(
+        #                 f"Joint: {name:<15} | Action: {action[action_idx]:>6.2f} | Torque: {torque:>6.1f} Nm"
+        #             )
+        #         p.setJointMotorControl2(
+        #             self.humanoid_id, j, p.TORQUE_CONTROL, force=torque
+        #         )
+        #         action_idx += 1
+
+        #     elif self.dof_per_joint[j] == 3:
+        #         raw_actions = action[action_idx : action_idx + 3]
+        #         torques = raw_actions * max_f
+        #         if printStep and printOn:
+        #             effort_pct = np.linalg.norm(raw_actions) / math.sqrt(3) * 100
+        #             print(
+        #                 f"Joint: {name:<15} | Effort: {effort_pct:>5.1f}% | Torques: {np.round(torques, 1)}"
+        #             )
+        #         p.setJointMotorControlMultiDof(
+        #             self.humanoid_id, j, p.TORQUE_CONTROL, force=list(torques)
+        #         )
+        #         action_idx += 3
         action_idx = 0
         for j in range(p.getNumJoints(self.humanoid_id)):
             name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
             if name not in MAX_TORQUE_MAP:
                 continue
 
-            max_f = np.array(MAX_TORQUE_MAP[name])
+            max_f = np.array(MAX_TORQUE_MAP[name]) * torque_scale
 
             if self.dof_per_joint[j] == 1:
-                torque = action[action_idx] * max_f
+                # --- 1-DOF JOINT ---
+                act_val = action[action_idx]
+                torque = act_val * max_f
+
                 if printStep and printOn:
+                    # Effort for 1-DOF is just absolute percentage (0 to 100%)
+                    effort_pct = abs(act_val) * 100
+
                     print(
-                        f"Joint: {name:<15} | Action: {action[action_idx]:>6.2f} | Torque: {torque:>6.1f} Nm"
+                        f"Joint: {name:<15} | Action: {act_val:>18.2f}   | Effort: {effort_pct:>5.1f}% | Torque: {torque:>22.1f} Nm"
                     )
+
                 p.setJointMotorControl2(
                     self.humanoid_id, j, p.TORQUE_CONTROL, force=torque
                 )
                 action_idx += 1
 
             elif self.dof_per_joint[j] == 3:
+                # --- 3-DOF JOINT ---
                 raw_actions = action[action_idx : action_idx + 3]
                 torques = raw_actions * max_f
+
                 if printStep and printOn:
+                    # Effort for 3-DOF is Norm / Max_Norm
                     effort_pct = np.linalg.norm(raw_actions) / math.sqrt(3) * 100
-                    print(
-                        f"Joint: {name:<15} | Effort: {effort_pct:>5.1f}% | Torques: {np.round(torques, 1)}"
+
+                    # Formatting Vectors
+                    act_str = f"[{raw_actions[0]:5.2f}, {raw_actions[1]:5.2f}, {raw_actions[2]:5.2f}]"
+                    trq_str = (
+                        f"[{torques[0]:6.1f}, {torques[1]:6.1f}, {torques[2]:6.1f}]"
                     )
+
+                    print(
+                        f"Joint: {name:<15} | Action: {act_str:>21} | Effort: {effort_pct:>5.1f}% | Torque: {trq_str:>25} Nm"
+                    )
+
                 p.setJointMotorControlMultiDof(
                     self.humanoid_id, j, p.TORQUE_CONTROL, force=list(torques)
                 )
@@ -461,7 +591,16 @@ class HumanStandEnv(gymnasium.Env):
         # 3. REWARD COMPONENTS
 
         # A. Height (The Goal)
-        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
+        # reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
+        # Chest reward distance closeness to chest.
+        dist_to_target = abs(TARGET_CHEST - chest_z)
+
+        if dist_to_target > 1.0:
+            reward_chest = 0.0
+        else:
+            # Linear ramp: 0.0 at 4m -> Max at 5m
+            reward_chest = self.weights["chest_height"] * (1.0 - dist_to_target)
+
         reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
 
         # B. Uprightness (Scaled)
@@ -509,7 +648,19 @@ class HumanStandEnv(gymnasium.Env):
         reward_term = 0.0
 
         # Terminate if chest touches ground (0.25) or flies away (6.0)
-        if chest_z < 0.25 or raw_chest_z > 6.0:
+        # if chest_z < 0.25 or raw_chest_z > 6.0:
+        #     done = True
+        #     reward_term = self.weights["termination_penalty"]
+        #     reward_survival = 0.0  # No survival bonus on the death step
+
+        # 400 Steps = 1.6s grace period for start-up
+        if self.steps_count > 400:
+            if chest_z < 0.65:  # Must stand up
+                done = True
+                reward_term = self.weights["termination_penalty"]
+                reward_survival = 0.0  # No survival bonus on the death step
+
+        if raw_chest_z > 6.0:  # Ceiling Safety
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -543,24 +694,84 @@ class HumanStandEnv(gymnasium.Env):
 
         return total_reward, done, decomp
 
+    # def _get_obs(self):
+    #     angles, velocities = [], []
+    #     for j in range(p.getNumJoints(self.humanoid_id)):
+    #         js = p.getJointState(self.humanoid_id, j)
+    #         angles.append(js[0])
+    #         velocities.append(js[1])
+    #     _, orn = p.getBasePositionAndOrientation(self.humanoid_id)
+    #     _, ang_vel = p.getBaseVelocity(self.humanoid_id)
+    #     return np.array(
+    #         angles + velocities + list(orn) + list(ang_vel), dtype=np.float32
+    #     )
+
     def _get_obs(self):
-        angles, velocities = [], []
+        joint_obs = []
+        debug_labels = []  # Store names for the printout
+
         for j in range(p.getNumJoints(self.humanoid_id)):
-            js = p.getJointState(self.humanoid_id, j)
-            angles.append(js[0])
-            velocities.append(js[1])
-        _, orn = p.getBasePositionAndOrientation(self.humanoid_id)
+            info = p.getJointInfo(self.humanoid_id, j)
+            jt = info[2]
+            name = info[1].decode("utf-8")  # Joint Name
+
+            if jt == p.JOINT_SPHERICAL:
+                # 7 Values: 4 Quat + 3 Vel
+                state = p.getJointStateMultiDof(self.humanoid_id, j)
+                joint_obs.extend(state[0])
+                joint_obs.extend(state[1])
+
+                # Add labels
+                debug_labels.extend(
+                    [f"{name}_qx", f"{name}_qy", f"{name}_qz", f"{name}_qw"]
+                )
+                debug_labels.extend([f"{name}_vx", f"{name}_vy", f"{name}_vz"])
+
+            elif jt == p.JOINT_REVOLUTE:
+                # 2 Values: 1 Ang + 1 Vel
+                state = p.getJointState(self.humanoid_id, j)
+                joint_obs.append(state[0])
+                joint_obs.append(state[1])
+
+                # Add labels
+                debug_labels.extend([f"{name}_ang", f"{name}_vel"])
+
+        # Root State
+        pos, orn = p.getBasePositionAndOrientation(self.humanoid_id)
         _, ang_vel = p.getBaseVelocity(self.humanoid_id)
-        return np.array(
-            angles + velocities + list(orn) + list(ang_vel), dtype=np.float32
-        )
+
+        # Assist Factors
+        kp = getattr(self, "current_kp", 0.0)
+        kd = getattr(self, "current_kd", 0.0)
+
+        # Merge Data
+        final_obs = joint_obs + list(pos) + list(orn) + list(ang_vel) + [kp, kd]
+
+        # --- DIAGNOSTIC LOGGER (Every 2000 steps) ---
+        if self.steps_count % 2000 == 0:
+            # Add remaining labels
+            debug_labels.extend(["Root_X", "Root_Y", "Root_Z"])
+            debug_labels.extend(["Root_Qx", "Root_Qy", "Root_Qz", "Root_Qw"])
+            debug_labels.extend(["Root_Wx", "Root_Wy", "Root_Wz"])
+            debug_labels.extend(["Assist_Kp", "Assist_Kd"])
+
+            print(f"\n--- OBS DEBUG (Step {self.steps_count}) ---")
+            print(f"{'INDEX':<6} | {'LABEL':<25} | {'VALUE':<10}")
+            print("-" * 45)
+            for i, (label, val) in enumerate(zip(debug_labels, final_obs)):
+                # Highlight Root Z and Kp visually
+                marker = " <---" if label in ["Root_Z", "Assist_Kp"] else ""
+                print(f"{i:<6} | {label:<25} | {val:>10.4f}{marker}")
+            print("-" * 45 + "\n")
+
+        return np.array(final_obs, dtype=np.float32)
 
 
 # ==========================================
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -624,7 +835,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run36_TEST",
+            tb_log_name="V12_Run37",
         )
 
         model.save("humanoid_v12_final")
