@@ -284,7 +284,7 @@ class HumanStandEnv(gymnasium.Env):
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 1.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.00,  # PENALTY: Applied to sum(action^2)
+            "energy_cost": -0.001,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
@@ -368,13 +368,13 @@ class HumanStandEnv(gymnasium.Env):
         # LOGIC
         if self.total_global_steps < WARMUP_END:
             # Phase 1: Full Help
-            current_kp = START_KP
-            current_kd = START_KD
+            self.current_kp = START_KP
+            self.current_kd = START_KD
         elif self.total_global_steps < DECAY_END:
             # Phase 2: Linear Decay
             progress = (self.total_global_steps - WARMUP_END) / (DECAY_END - WARMUP_END)
-            current_kp = START_KP * (1.0 - progress)
-            current_kd = START_KD * (1.0 - progress)
+            self.current_kp = START_KP * (1.0 - progress)
+            self.current_kd = START_KD * (1.0 - progress)
         else:
             self.current_kp = 0.0
             self.current_kd = 0.0
@@ -390,7 +390,9 @@ class HumanStandEnv(gymnasium.Env):
             error_pos = SPRING_ANCHOR - current_z
             error_vel = 0.0 - current_vel_z
 
-            spring_force_z = (current_kp * error_pos) + (current_kd * error_vel)
+            spring_force_z = (self.current_kp * error_pos) + (
+                self.current_kd * error_vel
+            )
             spring_force_z = max(0.0, min(spring_force_z, self.robot_weight * 3.0))
 
             p.applyExternalForce(
@@ -591,16 +593,7 @@ class HumanStandEnv(gymnasium.Env):
         # 3. REWARD COMPONENTS
 
         # A. Height (The Goal)
-        # reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
-        # Chest reward distance closeness to chest.
-        dist_to_target = abs(TARGET_CHEST - chest_z)
-
-        if dist_to_target > 1.0:
-            reward_chest = 0.0
-        else:
-            # Linear ramp: 0.0 at 4m -> Max at 5m
-            reward_chest = self.weights["chest_height"] * (1.0 - dist_to_target)
-
+        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
         reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
 
         # B. Uprightness (Scaled)
