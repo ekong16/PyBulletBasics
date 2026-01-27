@@ -164,6 +164,20 @@ def resetJointMotorsAndState(humanoid_id):
     for j in range(p.getNumJoints(humanoid_id)):
         info = p.getJointInfo(humanoid_id, j)
         jt = info[2]
+
+        # --- APPLY DAMPING ---
+        # 1.0 is a good starting point. It eats up kinetic energy.
+        # This allows high torque (strength) but prevents high velocity (flailing).
+        p.changeDynamics(
+            humanoid_id,
+            j,
+            jointDamping=5.0,
+            angularDamping=0.8,  # Resists the link's tendency to spin wildly
+            # Set to a very high number to stop the engine from 'clamping'
+            # and causing the 'flying' teleportation glitch.
+            # maxJointVelocity=10000,
+        )
+
         if jt in [p.JOINT_REVOLUTE, p.JOINT_PRISMATIC]:
             p.resetJointState(humanoid_id, j, 0, 0)
             p.setJointMotorControl2(humanoid_id, j, p.VELOCITY_CONTROL, force=0)
@@ -178,9 +192,16 @@ def resetJointMotorsAndState(humanoid_id):
             )
 
     for link in [5, 8]:
-        p.changeDynamics(humanoid_id, link, lateralFriction=10.0)
+        p.changeDynamics(humanoid_id, link, lateralFriction=5.0, rollingFriction=1.0)
+
     for link in [11, 14]:
-        p.changeDynamics(humanoid_id, link, lateralFriction=3.0)
+        p.changeDynamics(
+            humanoid_id,
+            link,
+            lateralFriction=10.0,
+            contactStiffness=30000,  # Prevents the "infinite hardness" bounce
+            contactDamping=1000,  # Absorbs the impact energy at the foot-floor interface
+        )
 
 
 class HumanStandEnv(gymnasium.Env):
@@ -219,7 +240,7 @@ class HumanStandEnv(gymnasium.Env):
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 1.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.001,  # PENALTY: Applied to sum(action^2)
+            "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
@@ -326,7 +347,8 @@ class HumanStandEnv(gymnasium.Env):
         self.current_energy_cost = 0.0
 
         # Randomize friction slightly to improve robustness
-        p.changeDynamics(self.plane_id, -1, lateralFriction=random.uniform(0.5, 1.2))
+        p.changeDynamics(self.plane_id, -1, lateralFriction=1.0)
+        # p.changeDynamics(self.plane_id, -1, lateralFriction=random.uniform(0.5, 1.2))
 
         resetJointMotorsAndState(self.humanoid_id)
         for _ in range(50):
@@ -348,7 +370,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.25
+        torque_scale = 1.00
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -386,7 +408,7 @@ class HumanStandEnv(gymnasium.Env):
                 prepared_torques.append((j, 3, list(torques)))
                 action_idx += 3
 
-        for _ in range(4):
+        for _ in range(8):
             self._apply_spring_force()
 
             # Apply Motor Torques at every simulation tick (240Hz)
@@ -647,8 +669,52 @@ if __name__ == "__main__":
         utils.print_dynamics_info(humanoid_id)
         utils.print_link_states(humanoid_id)
 
-        p.setTimeStep(1 / 240.0)
-        p.setPhysicsEngineParameter(numSolverIterations=200)
+        # p.setTimeStep(1 / 240.0)
+        # p.setPhysicsEngineParameter(numSolverIterations=200)
+
+        # PHYSICS_FREQ = 480
+        # p.setTimeStep(1.0 / PHYSICS_FREQ)
+
+        # p.setPhysicsEngineParameter(
+        #     # 1. SUB-STEPPING (The Accuracy Multiplier)
+        #     # This runs 4 internal physics ticks for every 1 stepSimulation call.
+        #     numSubSteps=4,
+        #     # 2. THE SLIDE CURE (Friction ERP)
+        #     # Replaces 'frictionAnchor'. 0.2 helps lock those rectangular feet (11, 14).
+        #     frictionERP=0.2,
+        #     # 3. SOLVER STRENGTH
+        #     # 150-200 iterations ensure the constraints don't drift.
+        #     numSolverIterations=150,
+        #     # 4. ERROR REDUCTION (ERP)
+        #     # 0.2 is standard for joint stability.
+        #     erp=0.2,
+        #     # 5. CONTACT STABILITY
+        #     # Prevents micro-bounces on the floor.
+        #     contactSlop=0.001,
+        # )
+
+        # --- MIDDLE GROUND PHYSICS ---
+        # Back to standard frequency to save CPU cycles
+        PHYSICS_FREQ = 240.0
+        p.setTimeStep(1.0 / PHYSICS_FREQ)
+
+        p.setPhysicsEngineParameter(
+            # 1. SUB-STEPPING: Use 2 instead of 4.
+            # Total internal ticks: 480Hz (240 x 2).
+            # This is 4x faster than the 'Expensive' config.
+            numSubSteps=2,
+            # 2. SOLVER ITERATIONS: Crank this slightly.
+            # It's cheaper to run more iterations than to run more time-steps.
+            numSolverIterations=200,
+            # 3. FRICTION ANCHOR (ERP): Keep this!
+            # It's computationally 'free' and prevents the sliding.
+            frictionERP=0.2,
+            # 4. ERROR REDUCTION (ERP): Increase to 0.4.
+            # This 'stiffens' the joints to compensate for the lower frequency.
+            erp=0.4,
+            # 5. CONTACT SLOP: Keep this.
+            contactSlop=0.001,
+        )
 
         TOTAL_TIMESTEPS = 20_000_000
 
@@ -657,7 +723,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
@@ -685,7 +751,7 @@ if __name__ == "__main__":
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.000,
+            ent_coef=0.001,
             vf_coef=1.0,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
@@ -695,7 +761,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run40_TEST",
+            tb_log_name="V12_Run41_TEST",
         )
 
         model.save("humanoid_v12_final")
