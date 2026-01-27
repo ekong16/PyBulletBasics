@@ -86,103 +86,6 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
-class PuppetMasterWrapper(gymnasium.Wrapper):
-    def __init__(
-        self, env, humanoid_id, total_timesteps=20_000_000
-    ):  # Changed to 20M (Fail Fast)
-        super().__init__(env)
-        self.humanoid_id = humanoid_id
-        self.total_timesteps = total_timesteps
-        self.current_step = 0
-
-        # Calculate Mass (Kept your logic)
-        self.total_mass = sum(
-            [
-                p.getDynamicsInfo(humanoid_id, i)[0]
-                for i in range(p.getNumJoints(humanoid_id))
-            ]
-        )
-        self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]
-
-        # Calculate Weight (Gravity Force)
-        self.robot_weight = self.total_mass * 9.81
-        print("ROBOT WEIGHT", self.robot_weight)
-
-    def step(self, action):
-        self.current_step += 1
-
-        # --- 1. CONFIGURATION: THE "MOON GRAVITY" SETUP ---
-        # We attach the spring HIGH (10m) so it never goes slack.
-        SPRING_ANCHOR = 10.0
-
-        # Stiffness 0.16:
-        #   - At Floor (Dist 10m): Pulls 1.6G (Strong Lift)
-        #   - At Target 5m (Dist 5m): Pulls 0.8G (Perfect Anti-Gravity)
-        start_kp = self.robot_weight * 0.16
-        start_kd = self.total_mass * 0.1
-
-        # --- 2. SCHEDULE: WARMUP -> DECAY -> REALITY ---
-        WARMUP_END = 2_000_000  # Phase 1: Full help until 2M
-        DECAY_END = 10_000_000  # Phase 2: Fade out until 10M
-
-        if self.current_step < WARMUP_END:
-            # Phase 1: Full Moon Gravity (No Decay)
-            current_kp = start_kp
-            current_kd = start_kd
-            phase = "WARMUP"
-        elif self.current_step < DECAY_END:
-            # Phase 2: Linear Decay
-            # 0.0 at warmup end -> 1.0 at decay end
-            progress = (self.current_step - WARMUP_END) / (DECAY_END - WARMUP_END)
-            current_kp = start_kp * (1.0 - progress)
-            current_kd = start_kd * (1.0 - progress)
-            phase = "DECAY"
-        else:
-            # Phase 3: Zero Assist (The Real World)
-            current_kp = 0.0
-            current_kd = 0.0
-            phase = "REAL"
-
-        # Logging (Every 50k steps)
-        if self.current_step % 50_000 == 0:
-            print(
-                f"Step: {self.current_step} | Phase: {phase} | Kp: {current_kp:.2f} | Kd: {current_kd:.1f}"
-            )
-
-        # --- 3. CALCULATE FORCE ---
-        try:
-            # Only calculate if assist is active
-            if current_kp > 0.001:
-                link_state = p.getLinkState(self.humanoid_id, 1, computeLinkVelocity=1)
-                current_z = link_state[0][2]
-                current_vel_z = link_state[6][2]
-
-                # CRITICAL: Pull towards the HIGH ANCHOR (10.0), not the chest target
-                error_pos = SPRING_ANCHOR - current_z
-                error_vel = 0.0 - current_vel_z
-
-                spring_force_z = (current_kp * error_pos) + (current_kd * error_vel)
-
-                # Safety Clips
-                spring_force_z = max(0.0, spring_force_z)  # No pushing down
-                spring_force_z = min(
-                    spring_force_z, self.robot_weight * 3.0
-                )  # Safety cap
-
-                p.applyExternalForce(
-                    self.humanoid_id,
-                    1,
-                    [0, 0, spring_force_z],
-                    link_state[0],
-                    p.WORLD_FRAME,
-                )
-
-        except Exception as e:
-            pass
-
-        return self.env.step(action)
-
-
 class GravityCurriculumWrapper(gymnasium.Wrapper):
     def __init__(self, env, total_timesteps=25_000_000, start_g=-2.0, end_g=-9.81):
         super().__init__(env)
@@ -222,6 +125,37 @@ class GravityCurriculumWrapper(gymnasium.Wrapper):
     def reset(self, **kwargs):
         # FIX: Gymnasium requires passing 'seed' and 'options' down the chain.
         # We use **kwargs to catch everything SB3 throws at it.
+        return self.env.reset(**kwargs)
+
+
+class SpringAssistWrapper(gymnasium.Wrapper):
+    def __init__(self, env, total_timesteps=20_000_000):
+        super().__init__(env)
+        self.total_timesteps = total_timesteps
+        # Decay target: 12,000,000 steps
+        self.decay_steps = self.total_timesteps * 0.6
+
+    def reset(self, **kwargs):
+        current_step = getattr(self.env, "total_global_steps", 0)
+
+        # Progress: 0.0 at start, 1.0 at 12M steps, capped at 1.0
+        progress = min(1.0, current_step / self.decay_steps)
+
+        # Prob: 90% at start, 0% at 12M steps
+        prob_assist = 0.9 * (1.0 - progress)
+
+        if np.random.random() < prob_assist:
+            # ASSIST ON: Set physics and a random factor
+            self.env.assist_factor = np.random.uniform(0.1, 1.0)
+        else:
+            # ASSIST OFF: Pure Reality
+            self.env.assist_factor = 0.0
+
+        mode = "MOON" if self.env.assist_factor > 0 else "REAL"
+        print(
+            f"[RUN 40] Step: {current_step / 1e6:.1f}M | {mode} | Factor: {self.env.assist_factor:.2f}"
+        )
+
         return self.env.reset(**kwargs)
 
 
@@ -270,8 +204,9 @@ class HumanStandEnv(gymnasium.Env):
         self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]  # Add Base Mass
         self.robot_weight = self.total_mass * 9.81
 
-        self.current_kp = 0.0
-        self.current_kd = 0.0
+        self.base_kp = self.robot_weight * 0.16
+        self.base_kd = self.total_mass * 2.5
+        self.assist_factor = 0.0
 
         print(f"DEBUG: Robot Total Mass: {self.total_mass:.2f} kg")
         print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
@@ -294,10 +229,12 @@ class HumanStandEnv(gymnasium.Env):
 
     def _init_spaces(self):
         n_joints = p.getNumJoints(self.humanoid_id)
+        self.joint_indices = []
         self.dof_per_joint = []
         obs_dim = 0
 
         for j in range(n_joints):
+            self.joint_indices.append(j)
             jt = p.getJointInfo(self.humanoid_id, j)[2]
             if jt == p.JOINT_SPHERICAL:
                 self.dof_per_joint.append(3)  # Action: 3 Torques
@@ -356,57 +293,30 @@ class HumanStandEnv(gymnasium.Env):
     #     print(f"DEBUG: Found foot links at indices: {self.foot_links}")
 
     def _apply_spring_force(self):
-        # CONFIG
-        SPRING_ANCHOR = 10.0
-        START_KP = self.robot_weight * 0.16
-        START_KD = self.total_mass * 2.5
-
-        # SCHEDULE
-        WARMUP_END = 2_000_000
-        DECAY_END = 10_000_000
-
-        # LOGIC
-        if self.total_global_steps < WARMUP_END:
-            # Phase 1: Full Help
-            self.current_kp = START_KP
-            self.current_kd = START_KD
-        elif self.total_global_steps < DECAY_END:
-            # Phase 2: Linear Decay
-            progress = (self.total_global_steps - WARMUP_END) / (DECAY_END - WARMUP_END)
-            self.current_kp = START_KP * (1.0 - progress)
-            self.current_kd = START_KD * (1.0 - progress)
-        else:
-            self.current_kp = 0.0
-            self.current_kd = 0.0
-            # Phase 3: Real World (Optimization)
+        # Optimization: Jump out early if assist is off
+        if self.assist_factor <= 0.0:
             return
 
-        # PHYSICS
         try:
             link_state = p.getLinkState(self.humanoid_id, 1, computeLinkVelocity=1)
-            current_z = link_state[0][2]
+            world_com_pos = link_state[0]
+            current_z = world_com_pos[2]
             current_vel_z = link_state[6][2]
 
-            error_pos = SPRING_ANCHOR - current_z
+            error_pos = 10.0 - current_z
             error_vel = 0.0 - current_vel_z
 
-            spring_force_z = (self.current_kp * error_pos) + (
-                self.current_kd * error_vel
+            # Apply the random factor to the base PD calculation
+            force_z = self.assist_factor * (
+                (self.base_kp * error_pos) + (self.base_kd * error_vel)
             )
-            spring_force_z = max(0.0, min(spring_force_z, self.robot_weight * 3.0))
+
+            force_z = max(0.0, min(force_z, self.robot_weight * 3.0))
 
             p.applyExternalForce(
-                self.humanoid_id,
-                1,
-                [0, 0, spring_force_z],
-                link_state[0],
-                p.WORLD_FRAME,
+                self.humanoid_id, 1, [0, 0, force_z], world_com_pos, p.WORLD_FRAME
             )
-
-            # Debug Print (Optional: Check first step)
-            if self.total_global_steps == 1:
-                print(f"!!! FORCE CHECK: Applied {spring_force_z:.1f}N !!!")
-        except:
+        except Exception:
             pass
 
     def reset(self, seed=None, options=None):
@@ -438,101 +348,58 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        # --- POWER GOVERNOR ---
-        # 0M Steps: 10% Strength (Baby)
-        # 10M Steps: 100% Strength (Adult)
-        # This matches the Spring Decay timeline.
-        RAMP_STEPS = 10_000_000
-        min_scale = 0.1
-        if self.total_global_steps < RAMP_STEPS:
-            progress = self.total_global_steps / RAMP_STEPS
-            torque_scale = min_scale + (progress * (1.0 - min_scale))
-        else:
-            torque_scale = 1.0
-
-        # action_idx = 0
-        # for j in range(p.getNumJoints(self.humanoid_id)):
-        #     name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
-        #     if name not in MAX_TORQUE_MAP:
-        #         continue
-
-        #     max_f = np.array(MAX_TORQUE_MAP[name]) * torque_scale
-
-        #     if self.dof_per_joint[j] == 1:
-        #         torque = action[action_idx] * max_f
-        #         if printStep and printOn:
-        #             print(
-        #                 f"Joint: {name:<15} | Action: {action[action_idx]:>6.2f} | Torque: {torque:>6.1f} Nm"
-        #             )
-        #         p.setJointMotorControl2(
-        #             self.humanoid_id, j, p.TORQUE_CONTROL, force=torque
-        #         )
-        #         action_idx += 1
-
-        #     elif self.dof_per_joint[j] == 3:
-        #         raw_actions = action[action_idx : action_idx + 3]
-        #         torques = raw_actions * max_f
-        #         if printStep and printOn:
-        #             effort_pct = np.linalg.norm(raw_actions) / math.sqrt(3) * 100
-        #             print(
-        #                 f"Joint: {name:<15} | Effort: {effort_pct:>5.1f}% | Torques: {np.round(torques, 1)}"
-        #             )
-        #         p.setJointMotorControlMultiDof(
-        #             self.humanoid_id, j, p.TORQUE_CONTROL, force=list(torques)
-        #         )
-        #         action_idx += 3
+        torque_scale = 0.25
+        # --- 2. PRE-CALCULATE TORQUES ---
+        # We calculate the target torques ONCE per policy step
+        # but apply them multiple times in the physics loop.
+        prepared_torques = []
         action_idx = 0
-        for j in range(p.getNumJoints(self.humanoid_id)):
+
+        for j in self.joint_indices:
             name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
             if name not in MAX_TORQUE_MAP:
                 continue
-
             max_f = np.array(MAX_TORQUE_MAP[name]) * torque_scale
 
             if self.dof_per_joint[j] == 1:
-                # --- 1-DOF JOINT ---
                 act_val = action[action_idx]
                 torque = act_val * max_f
-
                 if printStep and printOn:
-                    # Effort for 1-DOF is just absolute percentage (0 to 100%)
                     effort_pct = abs(act_val) * 100
-
                     print(
                         f"Joint: {name:<15} | Action: {act_val:>18.2f}   | Effort: {effort_pct:>5.1f}% | Torque: {torque:>22.1f} Nm"
                     )
-
-                p.setJointMotorControl2(
-                    self.humanoid_id, j, p.TORQUE_CONTROL, force=torque
-                )
+                prepared_torques.append((j, 1, torque))
                 action_idx += 1
-
             elif self.dof_per_joint[j] == 3:
-                # --- 3-DOF JOINT ---
                 raw_actions = action[action_idx : action_idx + 3]
                 torques = raw_actions * max_f
-
                 if printStep and printOn:
-                    # Effort for 3-DOF is Norm / Max_Norm
                     effort_pct = np.linalg.norm(raw_actions) / math.sqrt(3) * 100
-
-                    # Formatting Vectors
                     act_str = f"[{raw_actions[0]:5.2f}, {raw_actions[1]:5.2f}, {raw_actions[2]:5.2f}]"
                     trq_str = (
                         f"[{torques[0]:6.1f}, {torques[1]:6.1f}, {torques[2]:6.1f}]"
                     )
-
                     print(
                         f"Joint: {name:<15} | Action: {act_str:>21} | Effort: {effort_pct:>5.1f}% | Torque: {trq_str:>25} Nm"
                     )
-
-                p.setJointMotorControlMultiDof(
-                    self.humanoid_id, j, p.TORQUE_CONTROL, force=list(torques)
-                )
+                prepared_torques.append((j, 3, list(torques)))
                 action_idx += 3
 
         for _ in range(4):
             self._apply_spring_force()
+
+            # Apply Motor Torques at every simulation tick (240Hz)
+            for j_idx, dof, val in prepared_torques:
+                if dof == 1:
+                    p.setJointMotorControl2(
+                        self.humanoid_id, j_idx, p.TORQUE_CONTROL, force=val
+                    )
+                else:
+                    p.setJointMotorControlMultiDof(
+                        self.humanoid_id, j_idx, p.TORQUE_CONTROL, force=val
+                    )
+
             p.stepSimulation()
 
         obs = self._get_obs()
@@ -734,8 +601,8 @@ class HumanStandEnv(gymnasium.Env):
         _, ang_vel = p.getBaseVelocity(self.humanoid_id)
 
         # Assist Factors
-        kp = getattr(self, "current_kp", 0.0)
-        kd = getattr(self, "current_kd", 0.0)
+        kp = getattr(self, "base_kp", 0.0) * self.assist_factor
+        kd = getattr(self, "base_kd", 0.0) * self.assist_factor
 
         # Merge Data
         final_obs = joint_obs + list(pos) + list(orn) + list(ang_vel) + [kp, kd]
@@ -764,7 +631,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -790,7 +657,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-
+        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
@@ -828,7 +695,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run37",
+            tb_log_name="V12_Run40_TEST",
         )
 
         model.save("humanoid_v12_final")
