@@ -171,11 +171,11 @@ def resetJointMotorsAndState(humanoid_id):
         p.changeDynamics(
             humanoid_id,
             j,
-            jointDamping=5.0,
-            angularDamping=0.8,  # Resists the link's tendency to spin wildly
+            jointDamping=0.5,
+            angularDamping=0.1,  # Resists the link's tendency to spin wildly
             # Set to a very high number to stop the engine from 'clamping'
             # and causing the 'flying' teleportation glitch.
-            # maxJointVelocity=10000,
+            # maxJointVelocity=8.0,
         )
 
         if jt in [p.JOINT_REVOLUTE, p.JOINT_PRISMATIC]:
@@ -240,7 +240,7 @@ class HumanStandEnv(gymnasium.Env):
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 1.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.01,  # PENALTY: Applied to sum(action^2)
+            "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
             "survival_bonus": 0.5,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
@@ -370,7 +370,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 1.00
+        torque_scale = 0.6 * 0.6
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -536,8 +536,8 @@ class HumanStandEnv(gymnasium.Env):
         #     reward_survival = 0.0  # No survival bonus on the death step
 
         # 400 Steps = 1.6s grace period for start-up
-        if self.steps_count > 400:
-            if chest_z < 0.65:  # Must stand up
+        if self.steps_count > 512:
+            if chest_z < 0.66:  # Must stand up
                 done = True
                 reward_term = self.weights["termination_penalty"]
                 reward_survival = 0.0  # No survival bonus on the death step
@@ -744,7 +744,7 @@ if __name__ == "__main__":
             # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
-            learning_rate=1.0e-4,
+            learning_rate=5.0e-5,
             n_steps=4096,
             batch_size=1024,
             n_epochs=5,
@@ -761,7 +761,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run41_TEST",
+            tb_log_name="V12_Run42_TEST",
         )
 
         model.save("humanoid_v12_final")
