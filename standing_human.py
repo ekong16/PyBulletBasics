@@ -128,6 +128,56 @@ class GravityCurriculumWrapper(gymnasium.Wrapper):
         return self.env.reset(**kwargs)
 
 
+class TorqueCurriculumWrapper(gymnasium.ActionWrapper):
+    def __init__(self, env, total_timesteps=20_000_000):
+        super().__init__(env)
+        self.total_timesteps = total_timesteps
+        # Curriculum End: Reach full strength at 50% of training (e.g., 10M steps)
+        self.curriculum_steps = self.total_timesteps * 0.5
+
+        # Range: Start at 10% strength, end at 100% (of the 0.36 base)
+        self.start_factor = 0.1
+        self.end_factor = 1.0
+
+    def action(self, action):
+        """
+        Intercepts the action from the Agent and scales it down
+        before it hits the Physics Engine.
+        """
+        # 1. Get Global Step from the base environment
+        current_step = getattr(self.env, "total_global_steps", 0)
+
+        # 2. Calculate Progress (0.0 -> 1.0)
+        progress = min(1.0, current_step / self.curriculum_steps)
+
+        # 3. Calculate Current Factor (Linear Interpolation)
+        current_factor = (
+            self.start_factor + (self.end_factor - self.start_factor) * progress
+        )
+
+        # 4. Weaken the Action
+        return action * current_factor
+
+    def reset(self, **kwargs):
+        """
+        Logs the current status at the start of every episode.
+        """
+        current_step = getattr(self.env, "total_global_steps", 0)
+
+        # Re-calculate factor just for the print statement
+        progress = min(1.0, current_step / self.curriculum_steps)
+        current_factor = (
+            self.start_factor + (self.end_factor - self.start_factor) * progress
+        )
+
+        mode = "GROWING" if current_factor < 1.0 else "FULL POWER"
+        print(
+            f"[RUN 44] Step: {current_step / 1e6:.1f}M | {mode} | Torque Factor: {current_factor:.2f}"
+        )
+
+        return self.env.reset(**kwargs)
+
+
 class SpringAssistWrapper(gymnasium.Wrapper):
     def __init__(self, env, total_timesteps=20_000_000):
         super().__init__(env)
@@ -175,7 +225,7 @@ def resetJointMotorsAndState(humanoid_id):
             angularDamping=0.1,  # Resists the link's tendency to spin wildly
             # Set to a very high number to stop the engine from 'clamping'
             # and causing the 'flying' teleportation glitch.
-            # maxJointVelocity=8.0,
+            maxJointVelocity=50.0,
         )
 
         if jt in [p.JOINT_REVOLUTE, p.JOINT_PRISMATIC]:
@@ -653,7 +703,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -724,6 +774,7 @@ if __name__ == "__main__":
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
         # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
@@ -761,7 +812,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run42_TEST",
+            tb_log_name="V12_Run44",
         )
 
         model.save("humanoid_v12_final")
