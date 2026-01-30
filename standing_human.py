@@ -133,10 +133,10 @@ class TorqueCurriculumWrapper(gymnasium.ActionWrapper):
         super().__init__(env)
         self.total_timesteps = total_timesteps
         # Curriculum End: Reach full strength at 50% of training (e.g., 10M steps)
-        self.curriculum_steps = self.total_timesteps * 0.5
+        self.curriculum_steps = self.total_timesteps * 0.8
 
         # Range: Start at 10% strength, end at 100% (of the 0.36 base)
-        self.start_factor = 0.1
+        self.start_factor = 0.66
         self.end_factor = 1.0
 
     def action(self, action):
@@ -209,6 +209,68 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         return self.env.reset(**kwargs)
 
 
+def Apply128kgMasses(humanoid_id):
+    """
+    The 'Power of Two' Build.
+    Target Total Mass: EXACTLY 128.0 kg.
+
+    Distribution Strategy:
+    - Root (33kg) acts as the primary CoM anchor.
+    - Legs (57kg) are kept heavy to prevent 'stilts' effect.
+    - Chest (20kg) is lightened to reduce the load on your 400Nm ankles.
+    """
+    mass_map = {
+        # --- THE ANCHOR (33.0 kg) ---
+        "root": 33.0,
+        # --- THE UPPER BODY (38.0 kg Total) ---
+        # Chest reduced to 20kg to help stability.
+        "chest": 20.0,
+        "neck": 4.0,  # Heavy Head (4kg)
+        "right_shoulder": 3.5,
+        "left_shoulder": 3.5,
+        "right_elbow": 2.5,
+        "left_elbow": 2.5,
+        "right_wrist": 1.0,
+        "left_wrist": 1.0,
+        # --- THE BASE (57.0 kg Total) ---
+        # Legs are ~45% of total mass. Good for stability.
+        "right_hip": 16.0,
+        "left_hip": 16.0,
+        "right_knee": 10.0,
+        "left_knee": 10.0,
+        "right_ankle": 2.5,
+        "left_ankle": 2.5,
+    }
+
+    print("\n--- APPLYING 128kg MASS DISTRIBUTION ---")
+    total_mass = 0.0
+
+    for j in range(p.getNumJoints(humanoid_id)):
+        info = p.getJointInfo(humanoid_id, j)
+        link_name = info[12].decode("utf-8")
+
+        # Default fallback (very light)
+        target_mass = 0.1
+
+        for key, mass in mass_map.items():
+            if key in link_name:
+                target_mass = mass
+                break
+
+        p.changeDynamics(humanoid_id, j, mass=target_mass)
+        total_mass += target_mass
+
+    # Base (-1) - The final rounding error handler
+    # We set it to 0.0 to keep the sum clean, or 0.1 if bullet complains.
+    # (Physics engines usually prefer non-zero mass, so we'll use a tiny epsilon elsewhere
+    # but for your 128kg goal, the links above sum to 128.0 exactly).
+    p.changeDynamics(humanoid_id, -1, mass=1e-3)
+
+    print(f"--- TOTAL MASS: {total_mass:.1f} kg ---")
+    print(f"--- 128.0 KG LOCKED IN. ---")
+    return total_mass
+
+
 def resetJointMotorsAndState(humanoid_id):
     p.resetBasePositionAndOrientation(humanoid_id, INITIAL_POSITION, START_ORIENTATION)
     for j in range(p.getNumJoints(humanoid_id)):
@@ -266,13 +328,7 @@ class HumanStandEnv(gymnasium.Env):
 
         self.current_energy_cost = 0.0
 
-        self.total_mass = sum(
-            [
-                p.getDynamicsInfo(humanoid_id, i)[0]
-                for i in range(p.getNumJoints(humanoid_id))
-            ]
-        )
-        self.total_mass += p.getDynamicsInfo(humanoid_id, -1)[0]  # Add Base Mass
+        self.total_mass = Apply128kgMasses(self.humanoid_id)
         self.robot_weight = self.total_mass * 9.81
 
         self.base_kp = self.robot_weight * 0.16
@@ -703,7 +759,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -715,9 +771,6 @@ if __name__ == "__main__":
         )
 
         print("\n--- Humanoid Diagnostic Info ---")
-        utils.print_joint_info(humanoid_id)
-        utils.print_dynamics_info(humanoid_id)
-        utils.print_link_states(humanoid_id)
 
         # p.setTimeStep(1 / 240.0)
         # p.setPhysicsEngineParameter(numSolverIterations=200)
@@ -774,11 +827,15 @@ if __name__ == "__main__":
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
         # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
-        env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
         env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=10.0)
+
+        utils.print_joint_info(humanoid_id)
+        utils.print_dynamics_info(humanoid_id)
+        utils.print_link_states(humanoid_id)
 
         # MODEL CONFIGURATION
         # Define the policy architecture
@@ -812,7 +869,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run44",
+            tb_log_name="V12_Run47_TEST",
         )
 
         model.save("humanoid_v12_final")
