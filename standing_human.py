@@ -345,9 +345,9 @@ class HumanStandEnv(gymnasium.Env):
             "uprightness": 3.0,  # Orientation weight
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
-            "chest_vel": 1.0,  # Gated velocity (only works when low)
+            "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
-            "survival_bonus": 0.5,  # BONUS: Applied every step alive
+            "survival_bonus": 0.88,  # BONUS: Applied every step alive
             "termination_penalty": -100.0,
         }
         self.foot_links = []
@@ -759,7 +759,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -869,7 +869,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run47_TEST",
+            tb_log_name="V12_Run47",
         )
 
         model.save("humanoid_v12_final")
