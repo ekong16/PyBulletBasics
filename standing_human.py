@@ -634,10 +634,6 @@ class HumanStandEnv(gymnasium.Env):
         self.last_action = action.copy()
         action_rate_cost = raw_action_rate * self.weights["action_rate_cost"]
 
-        # Square the difference to punish large jerks more than small adjustments
-        # Sum it up across all joints
-        raw_action_rate = np.sum(np.square(action_diff))
-
         # E. SURVIVAL BONUS (New)
         # Constant reward for staying alive (not terminating)
         reward_survival = self.weights["survival_bonus"]
@@ -866,7 +862,7 @@ if __name__ == "__main__":
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
-        env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=10.0)
+        env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=10.0)
 
         utils.print_joint_info(humanoid_id)
         utils.print_dynamics_info(humanoid_id)
@@ -904,7 +900,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run52",
+            tb_log_name="V12_Run53",
         )
 
         model.save("humanoid_v12_final")
