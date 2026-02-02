@@ -764,7 +764,7 @@ class HumanStandEnv(gymnasium.Env):
         )
 
         # --- DIAGNOSTIC LOGGER  ---
-        if self.steps_count %  == 0:
+        if self.steps_count % 256 == 0:
             # Add remaining labels
             debug_labels.extend(["Root_X", "Root_Y", "Root_Z"])
             debug_labels.extend(["Root_Qx", "Root_Qy", "Root_Qz", "Root_Qw"])
@@ -794,7 +794,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
