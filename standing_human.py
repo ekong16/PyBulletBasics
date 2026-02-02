@@ -387,7 +387,7 @@ class HumanStandEnv(gymnasium.Env):
         self.observation_space = spaces.Box(
             low=-np.inf,
             high=np.inf,
-            shape=(obs_dim + 12 + self.action_dim,),
+            shape=(obs_dim + 12 + sum(self.dof_per_joint),),
             dtype=np.float32,
         )
 
@@ -490,6 +490,9 @@ class HumanStandEnv(gymnasium.Env):
         # but apply them multiple times in the physics loop.
         prepared_torques = []
         action_idx = 0
+
+        if printStep and printOn:
+            print("LAST ACTION:", self.last_action)
 
         for j in self.joint_indices:
             name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
@@ -760,8 +763,8 @@ class HumanStandEnv(gymnasium.Env):
             + list(self.last_action)
         )
 
-        # --- DIAGNOSTIC LOGGER (Every 2000 steps) ---
-        if self.steps_count % 2000 == 0:
+        # --- DIAGNOSTIC LOGGER  ---
+        if self.steps_count %  == 0:
             # Add remaining labels
             debug_labels.extend(["Root_X", "Root_Y", "Root_Z"])
             debug_labels.extend(["Root_Qx", "Root_Qy", "Root_Qz", "Root_Qw"])
@@ -901,7 +904,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run51",
+            tb_log_name="V12_Run52_TEST",
         )
 
         model.save("humanoid_v12_final")
