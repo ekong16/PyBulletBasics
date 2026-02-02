@@ -327,6 +327,7 @@ class HumanStandEnv(gymnasium.Env):
         self.total_global_steps = 0
 
         self.current_energy_cost = 0.0
+        self.last_action = None
 
         self.total_mass = Apply128kgMasses(self.humanoid_id)
         self.robot_weight = self.total_mass * 9.81
@@ -346,7 +347,8 @@ class HumanStandEnv(gymnasium.Env):
             "feet_contact": 5.0,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.88,  # PENALTY: Applied to sum(action^2)
+            "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
+            "action_rate_cost": -0.8,
             "survival_bonus": 8.8,  # BONUS: Applied every step alive
             "termination_penalty": -8888,
         }
@@ -375,6 +377,7 @@ class HumanStandEnv(gymnasium.Env):
         self.action_space = spaces.Box(
             low=-1, high=1, shape=(sum(self.dof_per_joint),), dtype=np.float32
         )
+        self.last_action = np.zeros(sum(self.dof_per_joint), dtype=np.float32)
 
         # Obs Space breakdown:
         # 1. Joint Data (obs_dim)
@@ -382,7 +385,10 @@ class HumanStandEnv(gymnasium.Env):
         # 3. Assist Factors (Kp, Kd) = 2
         # Total Extras = 12
         self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(obs_dim + 12,), dtype=np.float32
+            low=-np.inf,
+            high=np.inf,
+            shape=(obs_dim + 12 + self.action_dim,),
+            dtype=np.float32,
         )
 
         # Foot logic unchanged
@@ -451,12 +457,14 @@ class HumanStandEnv(gymnasium.Env):
         self.episode_count += 1
         self.steps_count = 0
         self.current_energy_cost = 0.0
+        self.last_action = np.zeros(sum(self.dof_per_joint), dtype=np.float32)
 
         # Randomize friction slightly to improve robustness
         p.changeDynamics(self.plane_id, -1, lateralFriction=1.0)
         # p.changeDynamics(self.plane_id, -1, lateralFriction=random.uniform(0.5, 1.2))
 
         resetJointMotorsAndState(self.humanoid_id)
+
         for _ in range(50):
             p.stepSimulation()
         return self._get_obs(), {}
@@ -531,7 +539,7 @@ class HumanStandEnv(gymnasium.Env):
             p.stepSimulation()
 
         obs = self._get_obs()
-        reward, done, decomposition = self._get_reward()
+        reward, done, decomposition = self._get_reward(action)
 
         self.steps_count += 1
         truncated = self.steps_count >= self.max_steps
@@ -539,7 +547,7 @@ class HumanStandEnv(gymnasium.Env):
 
         return obs, reward, done, truncated, info
 
-    def _get_reward(self):
+    def _get_reward(self, action):
         # 1. Get Physical States
         chest_state = p.getLinkState(self.humanoid_id, 1, computeLinkVelocity=1)
         root_state = p.getLinkState(self.humanoid_id, 0)
@@ -618,6 +626,15 @@ class HumanStandEnv(gymnasium.Env):
         # Penalize high action values to prevent flailing
         reward_energy = self.weights["energy_cost"] * self.current_energy_cost
 
+        action_diff = action - self.last_action
+        raw_action_rate = np.linalg.norm(action_diff)
+        self.last_action = action.copy()
+        action_rate_cost = raw_action_rate * self.weights["action_rate_cost"]
+
+        # Square the difference to punish large jerks more than small adjustments
+        # Sum it up across all joints
+        raw_action_rate = np.sum(np.square(action_diff))
+
         # E. SURVIVAL BONUS (New)
         # Constant reward for staying alive (not terminating)
         reward_survival = self.weights["survival_bonus"]
@@ -677,6 +694,7 @@ class HumanStandEnv(gymnasium.Env):
             "08_term": reward_term,
             "09_neck_height": reward_neck_height,
             "10_neck_uprightness": reward_neck_orient,
+            "11_action_rate_cost": action_rate_cost,
             "z_TOTAL": total_reward,
         }
 
@@ -733,7 +751,14 @@ class HumanStandEnv(gymnasium.Env):
         kd = getattr(self, "base_kd", 0.0) * self.assist_factor
 
         # Merge Data
-        final_obs = joint_obs + list(pos) + list(orn) + list(ang_vel) + [kp, kd]
+        final_obs = (
+            joint_obs
+            + list(pos)
+            + list(orn)
+            + list(ang_vel)
+            + [kp, kd]
+            + list(self.last_action)
+        )
 
         # --- DIAGNOSTIC LOGGER (Every 2000 steps) ---
         if self.steps_count % 2000 == 0:
@@ -743,12 +768,19 @@ class HumanStandEnv(gymnasium.Env):
             debug_labels.extend(["Root_Wx", "Root_Wy", "Root_Wz"])
             debug_labels.extend(["Assist_Kp", "Assist_Kd"])
 
+            # Add labels for Last Action
+            # (We use indices since 'joint names' map awkwardly to raw action indices)
+            for k in range(len(self.last_action)):
+                debug_labels.append(f"LastAct_{k}")
+
             print(f"\n--- OBS DEBUG (Step {self.steps_count}) ---")
             print(f"{'INDEX':<6} | {'LABEL':<25} | {'VALUE':<10}")
             print("-" * 45)
             for i, (label, val) in enumerate(zip(debug_labels, final_obs)):
                 # Highlight Root Z and Kp visually
-                marker = " <---" if label in ["Root_Z", "Assist_Kp"] else ""
+                marker = (
+                    " <---" if label in ["Root_Z", "Assist_Kp", "LastAct_0"] else ""
+                )
                 print(f"{i:<6} | {label:<25} | {val:>10.4f}{marker}")
             print("-" * 45 + "\n")
 
@@ -869,7 +901,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run49",
+            tb_log_name="V12_Run51",
         )
 
         model.save("humanoid_v12_final")
