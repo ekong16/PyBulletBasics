@@ -862,7 +862,7 @@ if __name__ == "__main__":
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecFrameStack(env, n_stack=8)
-        env = VecNormalize(env, norm_obs=True, norm_reward=False, clip_reward=10.0)
+        env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=88.8)
 
         utils.print_joint_info(humanoid_id)
         utils.print_dynamics_info(humanoid_id)
