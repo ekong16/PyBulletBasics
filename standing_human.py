@@ -647,6 +647,39 @@ class HumanStandEnv(gymnasium.Env):
         else:
             reward_feet = 0.0
 
+        # Self Collision Penalty
+        # SELF-COLLISION PENALTY
+        # Query all contacts where the robot touches itself
+        self_contacts = p.getContactPoints(
+            bodyA=self.humanoid_id, bodyB=self.humanoid_id
+        )
+
+        self_collision_cost = 0.0
+
+        # Iterate through contacts to filter out "false positives"
+        contact_count = 0
+        for pt in self_contacts:
+            link_a = pt[3]  # linkIndexA
+            link_b = pt[4]  # linkIndexB
+
+            # LINK FILTER:
+            # 1. Ignore if it's the same link (rare glitch but possible)
+            if link_a == link_b:
+                continue
+
+            # 2. Ignore neighbors (Parent/Child overlaps are normal)
+            # The indices in URDF are usually sequential (Thigh=3, Shin=4).
+            # If the difference is 1, they are likely neighbors.
+            if abs(link_a - link_b) <= 1:
+                continue
+
+            # If we are here, it's a "Forbidden Touch" (like Foot vs Head)
+            contact_count += 1
+
+        if contact_count > 0:
+            # Harsh penalty: -1.0 per illegal contact point
+            self_collision_cost = -1.0 * contact_count
+
         # 4. Termination Logic
         done = False
         reward_term = 0.0
@@ -680,6 +713,7 @@ class HumanStandEnv(gymnasium.Env):
             + reward_term
             + reward_neck_height
             + reward_neck_orient
+            + self_collision_cost
         )
 
         decomp = {
@@ -694,6 +728,7 @@ class HumanStandEnv(gymnasium.Env):
             "09_neck_height": reward_neck_height,
             "10_neck_uprightness": reward_neck_orient,
             "11_action_rate_cost": action_rate_cost,
+            "12_self_collision": self_collision_cost,
             "z_TOTAL": total_reward,
         }
 
@@ -900,7 +935,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run53",
+            tb_log_name="V12_Run54",
         )
 
         model.save("humanoid_v12_final")
