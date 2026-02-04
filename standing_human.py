@@ -344,7 +344,8 @@ class HumanStandEnv(gymnasium.Env):
             "root_height": 2.0,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 3.0,  # Orientation weight
-            "feet_contact": 5.0,
+            "feet_contact": 8.8,
+            "self_contact": -8.8,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
@@ -484,7 +485,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.6  # 0.6 * 0.6
+        torque_scale = 0.66  # 0.6 * 0.6
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -678,7 +679,7 @@ class HumanStandEnv(gymnasium.Env):
 
         if contact_count > 0:
             # Harsh penalty: -1.0 per illegal contact point
-            self_collision_cost = -1.0 * contact_count
+            self_collision_cost = self.weights["self_contact"] * contact_count
 
         # 4. Termination Logic
         done = False
@@ -935,7 +936,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run55_TEST",
+            tb_log_name="V12_Run56",
         )
 
         model.save("humanoid_v12_final")
