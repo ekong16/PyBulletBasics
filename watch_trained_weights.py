@@ -26,26 +26,29 @@ with utils.PyBulletSim(gui=True) as client:
     p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setRealTimeSimulation(0)
 
-    PHYSICS_FREQ = 240.0
-    p.setTimeStep(1.0 / PHYSICS_FREQ)
+    p.setTimeStep(1 / 240.0)
+    p.setPhysicsEngineParameter(numSolverIterations=200)
 
-    p.setPhysicsEngineParameter(
-        # 1. SUB-STEPPING: Use 2 instead of 4.
-        # Total internal ticks: 480Hz (240 x 2).
-        # This is 4x faster than the 'Expensive' config.
-        numSubSteps=2,
-        # 2. SOLVER ITERATIONS: Crank this slightly.
-        # It's cheaper to run more iterations than to run more time-steps.
-        numSolverIterations=200,
-        # 3. FRICTION ANCHOR (ERP): Keep this!
-        # It's computationally 'free' and prevents the sliding.
-        frictionERP=0.2,
-        # 4. ERROR REDUCTION (ERP): Increase to 0.4.
-        # This 'stiffens' the joints to compensate for the lower frequency.
-        erp=0.4,
-        # 5. CONTACT SLOP: Keep this.
-        contactSlop=0.001,
-    )
+    # PHYSICS_FREQ = 480.0
+    # p.setTimeStep(1.0 / PHYSICS_FREQ)
+
+    # p.setPhysicsEngineParameter(
+    #     # 1. SUB-STEPPING: Use 2 instead of 4.
+    #     # Total internal ticks: 480Hz (240 x 2).
+    #     # This is 4x faster than the 'Expensive' config.
+    #     numSubSteps=2,
+    #     # 2. SOLVER ITERATIONS: Crank this slightly.
+    #     # It's cheaper to run more iterations than to run more time-steps.
+    #     numSolverIterations=200,
+    #     # 3. FRICTION ANCHOR (ERP): Keep this!
+    #     # It's computationally 'free' and prevents the sliding.
+    #     frictionERP=0.2,
+    #     # 4. ERROR REDUCTION (ERP): Increase to 0.4.
+    #     # This 'stiffens' the joints to compensate for the lower frequency.
+    #     erp=0.4,
+    #     # 5. CONTACT SLOP: Keep this.
+    #     contactSlop=0.001,
+    # )
 
     planeId = p.loadURDF("plane.urdf")
 
