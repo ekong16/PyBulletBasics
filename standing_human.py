@@ -283,8 +283,8 @@ def resetJointMotorsAndState(humanoid_id):
         p.changeDynamics(
             humanoid_id,
             j,
-            jointDamping=0.28,
-            angularDamping=0.08,  # Resists the link's tendency to spin wildly
+            jointDamping=0.5,
+            angularDamping=0.1,  # Resists the link's tendency to spin wildly
             # Set to a very high number to stop the engine from 'clamping'
             # and causing the 'flying' teleportation glitch.
             # maxJointVelocity=50.0,
@@ -485,7 +485,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.6 * 0.6
+        torque_scale = 0.66
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -936,7 +936,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run58_TEST",
+            tb_log_name="V12_Run60_TEST",
         )
 
         model.save("humanoid_v12_final")
