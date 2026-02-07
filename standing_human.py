@@ -826,7 +826,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -839,52 +839,29 @@ if __name__ == "__main__":
 
         print("\n--- Humanoid Diagnostic Info ---")
 
-        p.setTimeStep(1 / 240.0)
-        p.setPhysicsEngineParameter(numSolverIterations=200)
+        # p.setTimeStep(1 / 240.0)
+        # p.setPhysicsEngineParameter(numSolverIterations=200)
 
-        # PHYSICS_FREQ = 480
-        # p.setTimeStep(1.0 / PHYSICS_FREQ)
+        PHYSICS_FREQ = 480
+        p.setTimeStep(1.0 / PHYSICS_FREQ)
 
-        # p.setPhysicsEngineParameter(
-        #     # 1. SUB-STEPPING (The Accuracy Multiplier)
-        #     # This runs 4 internal physics ticks for every 1 stepSimulation call.
-        #     numSubSteps=4,
-        #     # 2. THE SLIDE CURE (Friction ERP)
-        #     # Replaces 'frictionAnchor'. 0.2 helps lock those rectangular feet (11, 14).
-        #     frictionERP=0.2,
-        #     # 3. SOLVER STRENGTH
-        #     # 150-200 iterations ensure the constraints don't drift.
-        #     numSolverIterations=150,
-        #     # 4. ERROR REDUCTION (ERP)
-        #     # 0.2 is standard for joint stability.
-        #     erp=0.2,
-        #     # 5. CONTACT STABILITY
-        #     # Prevents micro-bounces on the floor.
-        #     contactSlop=0.001,
-        # )
-
-        # --- MIDDLE GROUND PHYSICS ---
-        # Back to standard frequency to save CPU cycles
-        # PHYSICS_FREQ = 240.0
-        # p.setTimeStep(1.0 / PHYSICS_FREQ)
-
-        # p.setPhysicsEngineParameter(
-        #     # 1. SUB-STEPPING: Use 2 instead of 4.
-        #     # Total internal ticks: 480Hz (240 x 2).
-        #     # This is 4x faster than the 'Expensive' config.
-        #     numSubSteps=2,
-        #     # 2. SOLVER ITERATIONS: Crank this slightly.
-        #     # It's cheaper to run more iterations than to run more time-steps.
-        #     numSolverIterations=200,
-        #     # 3. FRICTION ANCHOR (ERP): Keep this!
-        #     # It's computationally 'free' and prevents the sliding.
-        #     frictionERP=0.2,
-        #     # 4. ERROR REDUCTION (ERP): Increase to 0.4.
-        #     # This 'stiffens' the joints to compensate for the lower frequency.
-        #     erp=0.4,
-        #     # 5. CONTACT SLOP: Keep this.
-        #     contactSlop=0.001,
-        # )
+        p.setPhysicsEngineParameter(
+            # 1. SUB-STEPPING (The Accuracy Multiplier)
+            # This runs 4 internal physics ticks for every 1 stepSimulation call.
+            numSubSteps=4,
+            # 2. THE SLIDE CURE (Friction ERP)
+            # Replaces 'frictionAnchor'. 0.2 helps lock those rectangular feet (11, 14).
+            frictionERP=0.2,
+            # 3. SOLVER STRENGTH
+            # 150-200 iterations ensure the constraints don't drift.
+            numSolverIterations=150,
+            # 4. ERROR REDUCTION (ERP)
+            # 0.2 is standard for joint stability.
+            erp=0.2,
+            # 5. CONTACT STABILITY
+            # Prevents micro-bounces on the floor.
+            contactSlop=0.001,
+        )
 
         TOTAL_TIMESTEPS = 20_000_000
 
@@ -936,7 +913,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run60_TEST",
+            tb_log_name="V12_Run60",
         )
 
         model.save("humanoid_v12_final")
