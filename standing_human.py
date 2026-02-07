@@ -913,7 +913,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run60",
+            tb_log_name="V12_Run61",
         )
 
         model.save("humanoid_v12_final")
