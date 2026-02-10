@@ -183,20 +183,20 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         super().__init__(env)
         self.total_timesteps = total_timesteps
         # Decay target: 12,000,000 steps
-        self.decay_steps = self.total_timesteps * 0.6
+        self.active_num_steps = self.total_timesteps * 1.0
 
     def reset(self, **kwargs):
         current_step = getattr(self.env, "total_global_steps", 0)
 
         # Progress: 0.0 at start, 1.0 at 12M steps, capped at 1.0
-        progress = min(1.0, current_step / self.decay_steps)
+        progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.9 * (1.0 - progress)
+        prob_assist = 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
-            self.env.assist_factor = np.random.uniform(0.1, 1.0)
+            self.env.assist_factor = np.random.uniform(0.66, 0.88)
         else:
             # ASSIST OFF: Pure Reality
             self.env.assist_factor = 0.0
@@ -466,7 +466,7 @@ class HumanStandEnv(gymnasium.Env):
 
         resetJointMotorsAndState(self.humanoid_id)
 
-        for _ in range(50):
+        for _ in range(256):
             p.stepSimulation()
         return self._get_obs(), {}
 
@@ -870,7 +870,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -913,7 +913,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run61",
+            tb_log_name="V12_Run64",
         )
 
         model.save("humanoid_v12_final")

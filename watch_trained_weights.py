@@ -67,12 +67,18 @@ with utils.PyBulletSim(gui=True) as client:
     model = PPO.load("humanoid_v12_final.zip", env_normalized)
     env_normalized.training = False
 
-    for i in range(10):
-        obs = env_normalized.reset()
+    obs = env_normalized.reset()
+    episodes_played = 0
+    while episodes_played < 10:
         done = False
         while not done:
             action, _ = model.predict(obs, deterministic=True)
             obs, reward, done, info = env_normalized.step(action)
+
+        print("DONE", done)
+        if done[0]:
+            episodes_played += 1
+            print(f"Episode {episodes_played} finished.")
 
         print("DONE STEPPING")
 
