@@ -62,10 +62,11 @@ with utils.PyBulletSim(gui=True) as client:
     env_single = DummyVecEnv([lambda: env_monitored])
     env_stacked = VecFrameStack(env_single, n_stack=8)
     env_normalized = VecNormalize.load("vec_normalize_v12.pkl", venv=env_stacked)
-    env.training = False
-    env.norm_reward = False
+    # env.training = False
+    # env.norm_reward = False
     model = PPO.load("humanoid_v12_final.zip", env_normalized)
     env_normalized.training = False
+    env_normalized.norm_reward = False
 
     obs = env_normalized.reset()
     episodes_played = 0
