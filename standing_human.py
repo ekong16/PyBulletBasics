@@ -192,7 +192,7 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.066  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = 0.06 + 0.06  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -896,7 +896,7 @@ if __name__ == "__main__":
             # sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
-            learning_rate=5.0e-5,
+            learning_rate=2.5e-5,
             n_steps=4096,
             batch_size=1024,
             n_epochs=5,
@@ -913,7 +913,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run67",
+            tb_log_name="V12_Run68",
         )
 
         model.save("humanoid_v12_final")
