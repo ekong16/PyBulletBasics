@@ -69,11 +69,18 @@ with utils.PyBulletSim(gui=True) as client:
     env_normalized.norm_reward = False
 
     obs = env_normalized.reset()
+    # Burn 10 steps to fill the frame stack with real physics data
+    # zero_action = env_normalized.action_space.sample() * 0.0
+    # for _ in range(10):
+    #     # CRITICAL: Wrap it in brackets [] so VecEnv treats it as
+    #     # "The action for Environment #0"
+    #     obs, _, _, _ = env_normalized.step([zero_action])
     episodes_played = 0
     while episodes_played < 10:
         done = False
         while not done:
-            action, _ = model.predict(obs, deterministic=True)
+            action, _ = model.predict(obs, deterministic=False)
+            # action *= 0.66
             obs, reward, done, info = env_normalized.step(action)
 
         print("DONE", done)
