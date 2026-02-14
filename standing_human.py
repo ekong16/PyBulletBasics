@@ -600,9 +600,10 @@ class HumanStandEnv(gymnasium.Env):
         # 3. REWARD COMPONENTS
 
         # A. Height (The Goal)
-        reward_chest = self.weights["chest_height"] * max(
-            0, chest_z - (0.8 + 0.8 + 0.8)
-        )  # self.weights["chest_height"] * max(0, chest_z - 0.44)
+        # reward_chest = self.weights["chest_height"] * max(
+        #     0, chest_z - (0.8 + 0.8 + 0.8)
+        # )
+        self.weights["chest_height"] * max(0, chest_z - 0.44)
         reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
 
         # B. Uprightness (Scaled)
@@ -709,13 +710,14 @@ class HumanStandEnv(gymnasium.Env):
             reward_chest
             + reward_root
             + reward_upright
-            + reward_vel
+            # + reward_vel
             + reward_energy
             + reward_survival
             + reward_feet
             + reward_term
             + reward_neck_height
             + reward_neck_orient
+            + action_rate_cost
             + self_collision_cost
         )
 
@@ -723,7 +725,7 @@ class HumanStandEnv(gymnasium.Env):
             "01_chest_height": reward_chest,
             "02_root_height": reward_root,
             "03_upright": reward_upright,
-            "04_velocity": reward_vel,
+            #            "04_velocity": reward_vel,
             "05_energy": reward_energy,
             "06_survival": reward_survival,
             "07_feet": reward_feet,
@@ -828,7 +830,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setRealTimeSimulation(0)
         plane_id = p.loadURDF("plane.urdf")
@@ -915,7 +917,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run71_TEST",
+            tb_log_name="V12_Run71",
         )
 
         model.save("humanoid_v12_final")
