@@ -603,7 +603,9 @@ class HumanStandEnv(gymnasium.Env):
         # reward_chest = self.weights["chest_height"] * max(
         #     0, chest_z - (0.8 + 0.8 + 0.8)
         # )
-        self.weights["chest_height"] * max(0, chest_z - 0.44)
+        # self.weights["chest_height"] * max(0, chest_z - 0.44)
+        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
+
         reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
 
         # B. Uprightness (Scaled)
