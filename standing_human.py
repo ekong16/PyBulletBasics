@@ -196,7 +196,7 @@ class SpringAssistWrapper(gymnasium.Wrapper):
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
-            self.env.assist_factor = np.random.uniform(0.66, 0.88)
+            self.env.assist_factor = np.random.uniform(0.06, 0.88)
         else:
             # ASSIST OFF: Pure Reality
             self.env.assist_factor = 0.0
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run72",
+            tb_log_name="V12_Run73",
         )
 
         model.save("humanoid_v12_final")
