@@ -892,7 +892,7 @@ if __name__ == "__main__":
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
             net_arch=dict(pi=[256, 256], vf=[256, 256]),
-            log_std_init=-0.5,
+            log_std_init=-0.0,
         )
         model = PPO(
             "MlpPolicy",
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run73",
+            tb_log_name="V12_Run74",
         )
 
         model.save("humanoid_v12_final")
