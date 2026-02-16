@@ -192,7 +192,7 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.06 + 0.06  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -697,7 +697,7 @@ class HumanStandEnv(gymnasium.Env):
         #     reward_survival = 0.0  # No survival bonus on the death step
 
         # 400 Steps = 1.6s grace period for start-up
-        if self.steps_count > 512:
+        if self.steps_count > 256:
             if chest_z < 0.66:  # Must stand up
                 done = True
                 reward_term = self.weights["termination_penalty"]
@@ -714,7 +714,7 @@ class HumanStandEnv(gymnasium.Env):
             + reward_upright
             # + reward_vel
             + reward_energy
-            + reward_survival
+            # + reward_survival
             + reward_feet
             + reward_term
             + reward_neck_height
@@ -729,7 +729,7 @@ class HumanStandEnv(gymnasium.Env):
             "03_upright": reward_upright,
             #            "04_velocity": reward_vel,
             "05_energy": reward_energy,
-            "06_survival": reward_survival,
+            # "06_survival": reward_survival,
             "07_feet": reward_feet,
             "08_term": reward_term,
             "09_neck_height": reward_neck_height,
@@ -869,7 +869,7 @@ if __name__ == "__main__":
             contactSlop=0.001,
         )
 
-        TOTAL_TIMESTEPS = 20_000_000
+        TOTAL_TIMESTEPS = 1_200_000
 
         env = HumanStandEnv(humanoid_id, plane_id)
         # env = GravityCurriculumWrapper(
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run74",
+            tb_log_name="V12_Run75",
         )
 
         model.save("humanoid_v12_final")
