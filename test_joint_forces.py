@@ -13,21 +13,15 @@ PHYSICS_FREQ = 480
 STEPS_PER_SECOND = PHYSICS_FREQ // 8  # Since you have 8 frame skips
 
 with utils.PyBulletSim(gui=True) as client:
-    p.setAdditionalSearchPath(pybullet_data.getDataPath())
-    p.setTimeStep(1.0 / PHYSICS_FREQ)
-    p.setPhysicsEngineParameter(numSubSteps=4, frictionERP=0.2, numSolverIterations=150)
+    humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-    plane_id = p.loadURDF("plane.urdf")
-    humanoid_id = p.loadURDF(
-        "humanoid/humanoid.urdf",
-        [0, 0, 0.9 * SCALE],
-        p.getQuaternionFromEuler([0, math.pi / 2, 0]),
-        globalScaling=SCALE,
-    )
-
-    raw_env = HumanStandEnv(humanoid_id, plane_id)
-    env = VecFrameStack(DummyVecEnv([lambda: raw_env]), n_stack=8)
+    env = HumanStandEnv(humanoid_id, plane_id)
+    env = VecFrameStack(DummyVecEnv([lambda: env]), n_stack=8)
     env.reset()
+
+    utils.print_joint_info(humanoid_id)
+    utils.print_dynamics_info(humanoid_id)
+    utils.print_link_states(humanoid_id)
 
     print(f"\n--- SUSTAINED PHYSICAL LIMIT TEST ---")
 
@@ -47,9 +41,9 @@ with utils.PyBulletSim(gui=True) as client:
             label = "RELAXING"
 
         # Force the assist OFF to see real physics
-        raw_env.assist_factor = 0.0
+        env.assist_factor = 0.0
 
-        action_vector = np.ones(raw_env.action_space.shape) * action_val
+        action_vector = np.ones(env.action_space.shape) * action_val
         obs, reward, done, info = env.step([action_vector])
 
         if step % 20 == 0:

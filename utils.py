@@ -4,6 +4,7 @@ import pybullet_data
 import numpy as np
 from tabulate import tabulate
 import random
+import math
 
 
 class PyBulletSim:
@@ -28,6 +29,73 @@ class PyBulletSim:
             p.disconnect()
         # Let exceptions propagate (don’t suppress them)
         return False
+
+
+# --- 1. CONFIGURATION CLASS ---
+# Central place for all physics constants.
+# Import this in your main script if you need to access SCALE.
+class SimConfig:
+    # Scale
+    GLOBAL_SCALE = 0.32
+    INITIAL_POS = [0, 0, 0.9]
+    START_ORI = [0, math.pi / 2, 0]  # Euler (Roll, Pitch, Yaw)
+
+    # Physics Engine
+    PHYSICS_FREQ = 480
+    ENGINE_PARAMS = {
+        "numSubSteps": 4,  # Accuracy
+        "frictionERP": 0.2,  # Grip
+        "numSolverIterations": 150,  # Stability
+        "erp": 0.2,  # Joint stiffness
+        "contactSlop": 0.001,  # Anti-bounce
+    }
+
+
+# --- 2. SETUP FUNCTION ---
+def setup_humanoid_scene(p_module):
+    """
+    Applies the standard physics config and loads the robot/plane.
+    Args:
+        p_module: The pybullet module (usually 'p')
+    Returns:
+        humanoid_id, plane_id
+    """
+    # A. Basic World Setup
+    p_module.setAdditionalSearchPath(pybullet_data.getDataPath())
+    p_module.setRealTimeSimulation(0)
+
+    # B. Apply Physics Constants
+    p_module.setTimeStep(1.0 / SimConfig.PHYSICS_FREQ)
+    p_module.setPhysicsEngineParameter(**SimConfig.ENGINE_PARAMS)
+
+    # C. Load Plane
+    plane_id = p_module.loadURDF("plane.urdf")
+    # Fix floor friction so the robot can actually push off
+    p_module.changeDynamics(plane_id, -1, lateralFriction=1.0)
+
+    # D. Load Robot with Correct Flags
+    # USE_SELF_COLLISION: Arms can hit chest
+    # EXCLUDE_PARENT: Thighs won't explode against Shins
+    flags = (
+        p_module.URDF_USE_SELF_COLLISION
+        | p_module.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT
+    )
+
+    # (Optional) Fix Inertia if you are using custom masses
+    # flags |= p_module.URDF_COMPUTE_FULL_INERTIA
+
+    start_quat = p_module.getQuaternionFromEuler(SimConfig.START_ORI)
+
+    humanoid_id = p_module.loadURDF(
+        "humanoid/humanoid.urdf",
+        SimConfig.INITIAL_POS,
+        start_quat,
+        globalScaling=SimConfig.GLOBAL_SCALE,
+        flags=flags,
+    )
+
+    print(f"--- Loaded Humanoid (Scale: {SimConfig.GLOBAL_SCALE}) ---")
+    return humanoid_id, plane_id
 
 
 def print_joint_info(body_id):
@@ -122,14 +190,14 @@ def print_link_states(body_id):
         [
             -1,
             "base",
-            base_pos,
-            base_orn,
+            np.round(base_pos, 3),
+            np.round(base_orn, 3),
             "N/A",
             "N/A",
             "N/A",
             "N/A",
-            base_lin,
-            base_ang,
+            np.round(base_lin, 3),
+            np.round(base_ang, 3),
         ]
     )
 

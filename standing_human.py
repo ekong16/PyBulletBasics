@@ -16,8 +16,12 @@ import torch as th
 # ==========================================
 # GLOBAL VARS & CONFIG
 # ==========================================
-INITIAL_POSITION = [0, 0, 0.9]
-ROLL, PITCH, YAW = 0, math.pi / 2, 0
+INITIAL_POSITION = utils.SimConfig.INITIAL_POS
+ROLL, PITCH, YAW = (
+    utils.SimConfig.START_ORI[0],
+    utils.SimConfig.START_ORI[1],
+    utils.SimConfig.START_ORI[2],
+)
 START_ORIENTATION = p.getQuaternionFromEuler([ROLL, PITCH, YAW])
 
 # Max Force (Nm) per joint
@@ -51,9 +55,9 @@ MAX_TORQUE_MAP = {
     "left_ankle": [400, 400, 400],
 }
 
-TARGET_HEAD = 6.06
-TARGET_CHEST = 4.96
-TARGET_ROOT = 3.82
+TARGET_HEAD = 1.94
+TARGET_CHEST = 1.60
+TARGET_ROOT = 1.23
 
 
 def linear_schedule(
@@ -437,7 +441,7 @@ class HumanStandEnv(gymnasium.Env):
             current_z = world_com_pos[2]
             current_vel_z = link_state[6][2]
 
-            error_pos = 10.0 - current_z
+            error_pos = 5 - current_z
             error_vel = 0.0 - current_vel_z
 
             # Apply the random factor to the base PD calculation
@@ -600,18 +604,12 @@ class HumanStandEnv(gymnasium.Env):
         # 3. REWARD COMPONENTS
 
         # A. Height (The Goal)
-        # reward_chest = self.weights["chest_height"] * max(
-        #     0, chest_z - (0.8 + 0.8 + 0.8)
-        # )
-        # self.weights["chest_height"] * max(0, chest_z - 0.44)
-        reward_chest = self.weights["chest_height"] * max(0, chest_z - 0.44)
+        reward_chest = self.weights["chest_height"] * max(0, chest_z)
 
-        reward_root = self.weights["root_height"] * max(0, root_z - 0.36)
+        reward_root = self.weights["root_height"] * max(0, root_z)
 
         # B. Uprightness (Scaled)
-        reward_upright = self.weights["uprightness"] * (
-            uprightness * max(0, chest_z - 0.44)
-        )
+        reward_upright = self.weights["uprightness"] * (uprightness * max(0, chest_z))
 
         # C. GATED VELOCITY (Anti-Popcorn Logic)
         # Only reward upward velocity if we are ON THE FLOOR (< 0.6m).
@@ -624,11 +622,11 @@ class HumanStandEnv(gymnasium.Env):
         reward_vel = self.weights["chest_vel"] * chest_vel_z
 
         # NEW: NECK/HEAD REWARDS (Simplified)
-        reward_neck_height = self.weights["neck_height"] * max(0, head_z - 0.41)
+        reward_neck_height = self.weights["neck_height"] * max(0, head_z)
         # 2. Head Orientation
         # Gated by height so we don't reward looking at the ceiling while lying on back.
         reward_neck_orient = self.weights["neck_orientation"] * (
-            head_uprightness * max(0, head_z - 0.41)
+            head_uprightness * max(0, head_z)
         )
 
         # D. ACTION PENALTY (New)
@@ -648,7 +646,7 @@ class HumanStandEnv(gymnasium.Env):
         # --- CRITICAL: BELLY START PROTECTION ---
         # Only grant this if the chest is reasonably high (>0.6m)
         # Otherwise it will just lie on the floor and tap its feet.
-        if chest_z > 0.6:
+        if chest_z > TARGET_CHEST / 4.0:
             reward_feet = self.weights["feet_contact"] * feet_contact_raw
         else:
             reward_feet = 0.0
@@ -698,12 +696,12 @@ class HumanStandEnv(gymnasium.Env):
 
         # 400 Steps = 1.6s grace period for start-up
         if self.steps_count > 128:
-            if chest_z < 0.66:  # Must stand up
+            if chest_z < TARGET_CHEST / 4.0:  # Must stand up
                 done = True
                 reward_term = self.weights["termination_penalty"]
                 reward_survival = 0.0  # No survival bonus on the death step
 
-        if raw_chest_z > 6.0:  # Ceiling Safety
+        if raw_chest_z > TARGET_CHEST * 1.25:  # Ceiling Safety
             done = True
             reward_term = self.weights["termination_penalty"]
             reward_survival = 0.0  # No survival bonus on the death step
@@ -836,41 +834,7 @@ class HumanStandEnv(gymnasium.Env):
 # ==========================================
 if __name__ == "__main__":
     with utils.PyBulletSim(gui=False) as client:
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setRealTimeSimulation(0)
-        plane_id = p.loadURDF("plane.urdf")
-        humanoid_id = p.loadURDF(
-            "humanoid/humanoid.urdf",
-            INITIAL_POSITION,
-            START_ORIENTATION,
-            flags=p.URDF_USE_SELF_COLLISION,
-        )
-
-        print("\n--- Humanoid Diagnostic Info ---")
-
-        # p.setTimeStep(1 / 240.0)
-        # p.setPhysicsEngineParameter(numSolverIterations=200)
-
-        PHYSICS_FREQ = 480
-        p.setTimeStep(1.0 / PHYSICS_FREQ)
-
-        p.setPhysicsEngineParameter(
-            # 1. SUB-STEPPING (The Accuracy Multiplier)
-            # This runs 4 internal physics ticks for every 1 stepSimulation call.
-            numSubSteps=4,
-            # 2. THE SLIDE CURE (Friction ERP)
-            # Replaces 'frictionAnchor'. 0.2 helps lock those rectangular feet (11, 14).
-            frictionERP=0.2,
-            # 3. SOLVER STRENGTH
-            # 150-200 iterations ensure the constraints don't drift.
-            numSolverIterations=150,
-            # 4. ERROR REDUCTION (ERP)
-            # 0.2 is standard for joint stability.
-            erp=0.2,
-            # 5. CONTACT STABILITY
-            # Prevents micro-bounces on the floor.
-            contactSlop=0.001,
-        )
+        humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 1_200_000
 
