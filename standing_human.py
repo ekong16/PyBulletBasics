@@ -489,7 +489,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 1.0
+        torque_scale = 0.28
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -646,10 +646,11 @@ class HumanStandEnv(gymnasium.Env):
         # --- CRITICAL: BELLY START PROTECTION ---
         # Only grant this if the chest is reasonably high (>0.6m)
         # Otherwise it will just lie on the floor and tap its feet.
-        if chest_z > TARGET_CHEST / 4.0:
-            reward_feet = self.weights["feet_contact"] * feet_contact_raw
-        else:
-            reward_feet = 0.0
+        # if chest_z > TARGET_CHEST / 4.0:
+        #     reward_feet = self.weights["feet_contact"] * feet_contact_raw
+        # else:
+        #     reward_feet = 0.0
+        reward_feet = self.weights["feet_contact"] * feet_contact_raw
 
         # Self Collision Penalty
         # SELF-COLLISION PENALTY
@@ -833,7 +834,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 1_200_000
@@ -843,7 +844,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -886,7 +887,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run79",
+            tb_log_name="V12_Run81_TEST",
         )
 
         model.save("humanoid_v12_final")
