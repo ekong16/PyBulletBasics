@@ -697,7 +697,7 @@ class HumanStandEnv(gymnasium.Env):
         #     reward_survival = 0.0  # No survival bonus on the death step
 
         # 400 Steps = 1.6s grace period for start-up
-        if self.steps_count > 256:
+        if self.steps_count > 128:
             if chest_z < 0.66:  # Must stand up
                 done = True
                 reward_term = self.weights["termination_penalty"]
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run75",
+            tb_log_name="V12_Run76",
         )
 
         model.save("humanoid_v12_final")
