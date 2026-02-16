@@ -196,11 +196,12 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
-            self.env.assist_factor = np.random.uniform(0.06, 0.88)
+            self.env.assist_factor = 1.0
+            # self.env.assist_factor = np.random.uniform(0.66, 0.88)
         else:
             # ASSIST OFF: Pure Reality
             self.env.assist_factor = 0.0
@@ -441,7 +442,7 @@ class HumanStandEnv(gymnasium.Env):
             current_z = world_com_pos[2]
             current_vel_z = link_state[6][2]
 
-            error_pos = 5 - current_z
+            error_pos = 3 - current_z
             error_vel = 0.0 - current_vel_z
 
             # Apply the random factor to the base PD calculation
@@ -836,7 +837,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 1_200_000
@@ -846,7 +847,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -889,7 +890,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run82",
+            tb_log_name="V12_Run84_TEST",
         )
 
         model.save("humanoid_v12_final")
