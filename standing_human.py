@@ -788,8 +788,11 @@ class HumanStandEnv(gymnasium.Env):
         _, ang_vel = p.getBaseVelocity(self.humanoid_id)
 
         # Assist Factors
-        kp = getattr(self, "base_kp", 0.0) * self.assist_factor
-        kd = getattr(self, "base_kd", 0.0) * self.assist_factor
+        # kp = getattr(self, "base_kp", 0.0) * self.assist_factor
+        # kd = getattr(self, "base_kd", 0.0) * self.assist_factor
+
+        kp = 0
+        kd = 0
 
         # Merge Data
         final_obs = (
@@ -919,7 +922,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run77",
+            tb_log_name="V12_Run78",
         )
 
         model.save("humanoid_v12_final")
