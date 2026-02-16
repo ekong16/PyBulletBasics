@@ -192,7 +192,7 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -892,14 +892,14 @@ if __name__ == "__main__":
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
             net_arch=dict(pi=[256, 256], vf=[256, 256]),
-            log_std_init=-0.0,
+            log_std_init=-2.0,
         )
         model = PPO(
             "MlpPolicy",
             env,
             policy_kwargs=policy_kwargs,
-            use_sde=False,  # <--- Stops the flailing
-            # sde_sample_freq=4,  # smooths noise every 4 steps
+            use_sde=True,  # <--- Stops the flailing
+            sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
             learning_rate=2.5e-5,
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run76",
+            tb_log_name="V12_Run77",
         )
 
         model.save("humanoid_v12_final")
