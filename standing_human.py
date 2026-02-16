@@ -349,7 +349,7 @@ class HumanStandEnv(gymnasium.Env):
             "neck_height": 1.5,  # High priority to encourage lifting the head
             "uprightness": 3.0,  # Orientation weight
             "feet_contact": 8.8,
-            "self_contact": -8.8,
+            "self_contact": -0.88,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
@@ -588,6 +588,8 @@ class HumanStandEnv(gymnasium.Env):
         # CONTACT DETECTION (The Cure for Helicopter Legs)
         feet_contact_reward = 0.0
         contact_points = 0
+        if len(self.foot_links) != 2:
+            raise Exception("Foot links not properly configured...")
         for link_idx in self.foot_links:
             # Check if this link is touching the floor (plane_id)
             # p.getContactPoints returns a list; if not empty, we have contact
