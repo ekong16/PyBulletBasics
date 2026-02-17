@@ -490,7 +490,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.6 * 0.6
+        torque_scale = 0.28
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -711,7 +711,7 @@ class HumanStandEnv(gymnasium.Env):
             reward_term = self.weights["termination_penalty"]
 
         if raw_chest_z > TARGET_CHEST * 1.6:  # Ceiling Safety
-            done = True
+            # done = True
             reward_term = self.weights["termination_penalty"] * 10.0
             reward_survival = 0.0  # No survival bonus on the death step
 
@@ -895,7 +895,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run90",
+            tb_log_name="V12_Run91",
         )
 
         model.save("humanoid_v12_final")
