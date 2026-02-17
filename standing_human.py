@@ -356,7 +356,7 @@ class HumanStandEnv(gymnasium.Env):
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
             "action_rate_cost": -0.8,
             "survival_bonus": 8.8,  # BONUS: Applied every step alive
-            "termination_penalty": -88.8,
+            "termination_penalty": -8.8,
         }
         self.foot_links = []
 
@@ -490,7 +490,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.50
+        torque_scale = 0.6 * 0.6
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -703,7 +703,7 @@ class HumanStandEnv(gymnasium.Env):
             if chest_z < TARGET_CHEST / 6.0:  # Must stand up
                 # done = True
                 reward_term = (
-                    self.weights["termination_penalty"] / 10.0
+                    self.weights["termination_penalty"] / 2.0
                 )  # Lesser penalty for staying low ...
                 reward_survival = 0.0  # No survival bonus on the death step
 
@@ -711,8 +711,8 @@ class HumanStandEnv(gymnasium.Env):
             reward_term = self.weights["termination_penalty"]
 
         if raw_chest_z > TARGET_CHEST * 1.6:  # Ceiling Safety
-            # done = True
-            reward_term = self.weights["termination_penalty"] * 10.0
+            done = True
+            reward_term = self.weights["termination_penalty"] * 2.0
             reward_survival = 0.0  # No survival bonus on the death step
 
         total_reward = (
