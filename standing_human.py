@@ -356,7 +356,7 @@ class HumanStandEnv(gymnasium.Env):
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
             "action_rate_cost": -0.8,
             "survival_bonus": 8.8,  # BONUS: Applied every step alive
-            "termination_penalty": -8.8,
+            "termination_penalty": -88.8,
         }
         self.foot_links = []
 
@@ -702,7 +702,9 @@ class HumanStandEnv(gymnasium.Env):
         if self.steps_count > 128:
             if chest_z < TARGET_CHEST / 4.0:  # Must stand up
                 done = True
-                reward_term = self.weights["termination_penalty"]
+                reward_term = (
+                    self.weights["termination_penalty"] / 10.0
+                )  # Lesser penalty for staying low ...
                 reward_survival = 0.0  # No survival bonus on the death step
 
         if raw_chest_z > TARGET_CHEST * 1.25:  # Ceiling Safety
@@ -890,7 +892,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run85",
+            tb_log_name="V12_Run87",
         )
 
         model.save("humanoid_v12_final")
