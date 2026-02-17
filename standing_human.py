@@ -700,16 +700,16 @@ class HumanStandEnv(gymnasium.Env):
 
         # 400 Steps = 1.6s grace period for start-up
         if self.steps_count > 128:
-            if chest_z < TARGET_CHEST / 4.0:  # Must stand up
+            if chest_z < TARGET_CHEST / 6.0:  # Must stand up
                 done = True
                 reward_term = (
                     self.weights["termination_penalty"] / 10.0
                 )  # Lesser penalty for staying low ...
                 reward_survival = 0.0  # No survival bonus on the death step
 
-        if raw_chest_z > TARGET_CHEST * 1.25:  # Ceiling Safety
+        if raw_chest_z > TARGET_CHEST * 1.08:  # Ceiling Safety
             done = True
-            reward_term = self.weights["termination_penalty"]
+            reward_term = self.weights["termination_penalty"] * 10.0
             reward_survival = 0.0  # No survival bonus on the death step
 
         total_reward = (
