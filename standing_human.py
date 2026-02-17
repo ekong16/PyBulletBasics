@@ -356,7 +356,7 @@ class HumanStandEnv(gymnasium.Env):
             "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
             "action_rate_cost": -0.8,
             "survival_bonus": 8.8,  # BONUS: Applied every step alive
-            "termination_penalty": -8888,
+            "termination_penalty": -8.8,
         }
         self.foot_links = []
 
@@ -837,7 +837,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=False) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 1_200_000
@@ -847,7 +847,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -863,7 +863,7 @@ if __name__ == "__main__":
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
             net_arch=dict(pi=[256, 256], vf=[256, 256]),
-            log_std_init=-2.0,
+            log_std_init=-1.2,
         )
         model = PPO(
             "MlpPolicy",
@@ -873,10 +873,10 @@ if __name__ == "__main__":
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
-            learning_rate=2.5e-5,
-            n_steps=4096,
-            batch_size=1024,
-            n_epochs=5,
+            learning_rate=1.0e-4,
+            n_steps=4096,  # buffer of training data
+            batch_size=1024,  # Batch size passed at once to NN
+            n_epochs=5,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
@@ -890,7 +890,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run84_TEST",
+            tb_log_name="V12_Run85",
         )
 
         model.save("humanoid_v12_final")
