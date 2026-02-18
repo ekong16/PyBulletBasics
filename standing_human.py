@@ -196,7 +196,9 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = (
+            1.0  # 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        )
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -442,7 +444,7 @@ class HumanStandEnv(gymnasium.Env):
             current_z = world_com_pos[2]
             current_vel_z = link_state[6][2]
 
-            error_pos = 3 - current_z
+            error_pos = 6 - current_z
             error_vel = 0.0 - current_vel_z
 
             # Apply the random factor to the base PD calculation
@@ -895,7 +897,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run96",
+            tb_log_name="V12_Run97",
         )
 
         model.save("humanoid_v12_final")

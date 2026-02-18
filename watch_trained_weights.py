@@ -52,11 +52,11 @@ with utils.PyBulletSim(gui=True) as client:
     while episodes_played < 10:
         done = False
         while not done:
-            action, _ = model.predict(obs, deterministic=True)
+            action, _ = model.predict(obs, deterministic=False)
             # action *= 0.66
             obs, reward, done, info = env_normalized.step(action)
 
-            time.sleep(1.0 / 60.0)
+            # time.sleep(1.0 / 60.0)
 
         print("DONE", done)
         if done[0]:
