@@ -196,9 +196,7 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = (
-            1.0  # 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
-        )
+        prob_assist = 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -492,7 +490,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.08 + 0.08
+        torque_scale = 0.5
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -870,7 +868,7 @@ if __name__ == "__main__":
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
             net_arch=dict(pi=[256, 256], vf=[256, 256]),
-            log_std_init=-1.0,
+            log_std_init=-2.0,
         )
         model = PPO(
             "MlpPolicy",
@@ -897,7 +895,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run97",
+            tb_log_name="V12_Run98",
         )
 
         model.save("humanoid_v12_final")
