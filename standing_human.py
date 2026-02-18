@@ -490,7 +490,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.6 * 0.6
+        torque_scale = 0.08 + 0.08
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -852,7 +852,7 @@ if __name__ == "__main__":
         #     env, total_timesteps=TOTAL_TIMESTEPS, start_g=-2.0, end_g=-9.81
         # )
         # env = PuppetMasterWrapper(env, humanoid_id, total_timesteps=TOTAL_TIMESTEPS)
-        # env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
+        env = SpringAssistWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         # env = TorqueCurriculumWrapper(env, total_timesteps=TOTAL_TIMESTEPS)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
@@ -895,7 +895,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run93",
+            tb_log_name="V12_Run96",
         )
 
         model.save("humanoid_v12_final")

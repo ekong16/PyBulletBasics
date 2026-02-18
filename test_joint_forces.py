@@ -27,7 +27,7 @@ with utils.PyBulletSim(gui=True) as client:
 
     # 1.5 seconds of Max Power, then 1.5 seconds of Relax
     # At 60Hz (480/8), that is 90 steps per phase
-    PHASE_STEPS = int(1.5 * STEPS_PER_SECOND)
+    PHASE_STEPS = int(8 * STEPS_PER_SECOND)
 
     for step in range(1000):
         # SUSTAINED LOGIC
@@ -37,13 +37,16 @@ with utils.PyBulletSim(gui=True) as client:
             label = "BLASTING"
         else:
             # THE COLLAPSE: Hold 0.0 for 90 steps
-            action_val = 0.0
+            action_val = 0.5
             label = "RELAXING"
 
         # Force the assist OFF to see real physics
         env.assist_factor = 0.0
 
-        action_vector = np.ones(env.action_space.shape) * action_val
+        action_vector = vector = (
+            np.random.choice([-1, 1], size=env.action_space.shape) * action_val
+        )
+        # np.ones(env.action_space.shape) * action_val
         obs, reward, done, info = env.step([action_vector])
 
         if step % 20 == 0:
