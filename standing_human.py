@@ -490,7 +490,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.5
+        torque_scale = 0.25
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -880,7 +880,7 @@ if __name__ == "__main__":
             # learning_rate=linear_schedule(1.0e-4, min_value=1.0e-6),
             learning_rate=1.0e-4,
             n_steps=4096,  # buffer of training data
-            batch_size=1024,  # Batch size passed at once to NN
+            batch_size=2048,  # Batch size passed at once to NN
             n_epochs=5,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
@@ -895,7 +895,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run98",
+            tb_log_name="V12_Run100",
         )
 
         model.save("humanoid_v12_final")
