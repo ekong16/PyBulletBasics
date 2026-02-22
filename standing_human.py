@@ -348,7 +348,7 @@ class HumanStandEnv(gymnasium.Env):
             "chest_height": 5.0,  # Primary motivator
             "root_height": 2.0,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
-            "uprightness": 3.0,  # Orientation weight
+            "uprightness": 6.6,  # Orientation weight
             "feet_contact": 8.8,
             "self_contact": -1.28,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
@@ -895,7 +895,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run109",
+            tb_log_name="V12_Run110",
         )
 
         model.save("humanoid_v12_final")
