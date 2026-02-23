@@ -8,7 +8,7 @@ from stable_baselines3 import PPO
 import utils
 import math
 
-from standing_human import HumanStandEnv
+from standing_human import HumanStandEnv, SpringAssistWrapper
 from stable_baselines3.common.vec_env import VecNormalize, VecFrameStack, DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 
@@ -26,6 +26,7 @@ with utils.PyBulletSim(gui=True) as client:
     my_humanoid_id, planeId = utils.setup_humanoid_scene(p)
 
     env = HumanStandEnv(my_humanoid_id, planeId)
+    # env = SpringAssistWrapper(env, total_timesteps=20_000_000)
     env_monitored = Monitor(env)
     env_single = DummyVecEnv([lambda: env_monitored])
     env_stacked = VecFrameStack(env_single, n_stack=8)

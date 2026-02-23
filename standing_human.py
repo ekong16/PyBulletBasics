@@ -196,7 +196,9 @@ class SpringAssistWrapper(gymnasium.Wrapper):
         progress = min(1.0, current_step / self.active_num_steps)
 
         # Prob: 90% at start, 0% at 12M steps
-        prob_assist = 0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        prob_assist = (
+            0.06 + 0.06  # 0.08 + 0.08  # 0.6 * 0.6  # 0.9 * (1.0 - progress)
+        )
 
         if np.random.random() < prob_assist:
             # ASSIST ON: Set physics and a random factor
@@ -345,10 +347,10 @@ class HumanStandEnv(gymnasium.Env):
         print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
 
         self.weights = {
-            "chest_height": 5.0,  # Primary motivator
+            "chest_height": 3.0,  # Primary motivator
             "root_height": 2.0,  # Secondary motivator
             "neck_height": 1.5,  # High priority to encourage lifting the head
-            "uprightness": 6.6,  # Orientation weight
+            "uprightness": 8.0,  # Orientation weight
             "feet_contact": 8.8,
             "self_contact": -1.28,
             "neck_orientation": 1.0,  # Keeps the head looking forward/level
