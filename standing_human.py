@@ -347,18 +347,18 @@ class HumanStandEnv(gymnasium.Env):
         print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
 
         self.weights = {
-            "chest_height": 3.0,  # Primary motivator
-            "root_height": 2.0,  # Secondary motivator
-            "neck_height": 1.5,  # High priority to encourage lifting the head
-            "uprightness": 8.0,  # Orientation weight
-            "feet_contact": 8.8,
-            "self_contact": -1.28,
-            "neck_orientation": 1.0,  # Keeps the head looking forward/level
+            "chest_height": 5.0,  # Primary motivator
+            "root_height": 3.0,  # Secondary motivator
+            "neck_height": 3.0,  # High priority to encourage lifting the head
+            "uprightness": 10.0,  # Orientation weight
+            "feet_contact": 8.0,
+            "self_contact": -2.0,
+            "neck_orientation": 3.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.08,  # PENALTY: Applied to sum(action^2)
-            "action_rate_cost": -0.8,
-            "survival_bonus": 8.8,  # BONUS: Applied every step alive
-            "termination_penalty": -8.8,
+            "energy_cost": -0.10,  # PENALTY: Applied to sum(action^2)
+            "action_rate_cost": -2.0,
+            "survival_bonus": 0.0,  # BONUS: Applied every step alive
+            "termination_penalty": -10.0,
         }
         self.foot_links = []
 
@@ -444,7 +444,7 @@ class HumanStandEnv(gymnasium.Env):
             current_z = world_com_pos[2]
             current_vel_z = link_state[6][2]
 
-            error_pos = 6 - current_z
+            error_pos = 5.0 - current_z
             error_vel = 0.0 - current_vel_z
 
             # Apply the random factor to the base PD calculation
@@ -639,7 +639,8 @@ class HumanStandEnv(gymnasium.Env):
         reward_energy = self.weights["energy_cost"] * self.current_energy_cost
 
         action_diff = action - self.last_action
-        raw_action_rate = np.linalg.norm(action_diff)
+        # raw_action_rate = np.linalg.norm(action_diff)
+        raw_action_rate = np.sum(np.square(action_diff))
         self.last_action = action.copy()
         action_rate_cost = raw_action_rate * self.weights["action_rate_cost"]
 
@@ -897,7 +898,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run110",
+            tb_log_name="V12_Run116",
         )
 
         model.save("humanoid_v12_final")
