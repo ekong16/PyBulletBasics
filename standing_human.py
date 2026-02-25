@@ -356,7 +356,7 @@ class HumanStandEnv(gymnasium.Env):
             "neck_orientation": 3.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.10,  # PENALTY: Applied to sum(action^2)
-            "action_rate_cost": -2.0,
+            "action_rate_cost": -0.5,
             "survival_bonus": 0.0,  # BONUS: Applied every step alive
             "termination_penalty": -10.0,
         }
@@ -492,7 +492,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.2
+        torque_scale = 0.25
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -605,6 +605,10 @@ class HumanStandEnv(gymnasium.Env):
         # Reward 1.0 per foot that is grounded.
         # This pays +2.0 for a stable stand, which is HUGE.
         feet_contact_raw = contact_points
+        if feet_contact_raw == 1:
+            feet_contact_raw = -1
+        elif feet_contact_raw == 0:
+            feet_contact_raw = -2
 
         # 3. REWARD COMPONENTS
 
@@ -704,7 +708,7 @@ class HumanStandEnv(gymnasium.Env):
         # 400 Steps = 1.6s grace period for start-up
         if self.steps_count > 128:
             if chest_z < TARGET_CHEST / 6.0:  # Must stand up
-                # done = True
+                done = True
                 reward_term = (
                     self.weights["termination_penalty"] / 2.0
                 )  # Lesser penalty for staying low ...
@@ -848,7 +852,7 @@ if __name__ == "__main__":
     with utils.PyBulletSim(gui=False) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 20_000_000
+        TOTAL_TIMESTEPS = 1_200_000
 
         env = HumanStandEnv(humanoid_id, plane_id)
         # env = GravityCurriculumWrapper(
@@ -880,8 +884,8 @@ if __name__ == "__main__":
             use_sde=True,  # <--- Stops the flailing
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            learning_rate=linear_schedule(1.0e-4, min_value=0),
-            # learning_rate=1.0e-4,
+            # learning_rate=linear_schedule(1.0e-4, min_value=0),
+            learning_rate=1.0e-4,
             n_steps=4096,  # buffer of training data
             batch_size=2048,  # Batch size passed at once to NN
             n_epochs=5,  # number of times entire buffer passed to NN
@@ -898,7 +902,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run116",
+            tb_log_name="V12_Run119",
         )
 
         model.save("humanoid_v12_final")
