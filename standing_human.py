@@ -347,13 +347,13 @@ class HumanStandEnv(gymnasium.Env):
         print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
 
         self.weights = {
-            "chest_height": 5.0,  # Primary motivator
-            "root_height": 3.0,  # Secondary motivator
-            "neck_height": 3.0,  # High priority to encourage lifting the head
-            "uprightness": 10.0,  # Orientation weight
-            "feet_contact": -3.0,  # really now feet height
+            "chest_height": 6.0,  # Primary motivator
+            "root_height": 5.0,  # Secondary motivator
+            "neck_height": 5.0,  # High priority to encourage lifting the head
+            "uprightness": 12.0,  # Orientation weight
+            "feet_contact": -0.5,  # really now feet height
             "self_contact": -2.0,
-            "neck_orientation": 3.0,  # Keeps the head looking forward/level
+            "neck_orientation": 5.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
             "energy_cost": -0.10,  # PENALTY: Applied to sum(action^2)
             "action_rate_cost": -0.5,
@@ -492,7 +492,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.25
+        torque_scale = 0.5
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run124",
+            tb_log_name="V12_Run126",
         )
 
         model.save("humanoid_v12_final")
