@@ -351,7 +351,7 @@ class HumanStandEnv(gymnasium.Env):
             "root_height": 3.0,  # Secondary motivator
             "neck_height": 3.0,  # High priority to encourage lifting the head
             "uprightness": 10.0,  # Orientation weight
-            "feet_contact": 8.0,
+            "feet_contact": -3.0,  # really now feet height
             "self_contact": -2.0,
             "neck_orientation": 3.0,  # Keeps the head looking forward/level
             "chest_vel": 0.0,  # Gated velocity (only works when low)
@@ -589,26 +589,43 @@ class HumanStandEnv(gymnasium.Env):
         head_uprightness = max(0, np.dot(head_up_vector, [0, 0, 1]))
 
         # CONTACT DETECTION (The Cure for Helicopter Legs)
-        feet_contact_reward = 0.0
-        contact_points = 0
+        # feet_contact_reward = 0.0
+        # contact_points = 0
+        # if len(self.foot_links) != 2:
+        #     raise Exception("Foot links not properly configured...")
+        # for link_idx in self.foot_links:
+        #     # Check if this link is touching the floor (plane_id)
+        #     # p.getContactPoints returns a list; if not empty, we have contact
+        #     contacts = p.getContactPoints(
+        #         bodyA=self.humanoid_id, bodyB=self.plane_id, linkIndexA=link_idx
+        #     )
+        #     if len(contacts) > 0:
+        #         contact_points += 1
+
+        # # Reward 1.0 per foot that is grounded.
+        # # This pays +2.0 for a stable stand, which is HUGE.
+        # feet_contact_raw = contact_points
+        # if feet_contact_raw < 2:
+        #     feet_contact_raw = -1
+
+        # FEET HEIGHT PENALTY (The Continuous Gradient)
+        feet_height_penalty = 0.0
+
         if len(self.foot_links) != 2:
             raise Exception("Foot links not properly configured...")
-        for link_idx in self.foot_links:
-            # Check if this link is touching the floor (plane_id)
-            # p.getContactPoints returns a list; if not empty, we have contact
-            contacts = p.getContactPoints(
-                bodyA=self.humanoid_id, bodyB=self.plane_id, linkIndexA=link_idx
-            )
-            if len(contacts) > 0:
-                contact_points += 1
 
-        # Reward 1.0 per foot that is grounded.
-        # This pays +2.0 for a stable stand, which is HUGE.
-        feet_contact_raw = contact_points
-        if feet_contact_raw == 1:
-            feet_contact_raw = -1
-        elif feet_contact_raw == 0:
-            feet_contact_raw = -2
+        for link_idx in self.foot_links:
+            # p.getLinkState returns a tuple where index 0 is the Cartesian position [x, y, z]
+            link_state = p.getLinkState(self.humanoid_id, link_idx)
+            foot_z = link_state[0][2]  # Extract the Z-axis height
+
+            # We strictly penalize height above the floor.
+            # max(0.0, foot_z) prevents the robot from finding an exploit
+            # where it clips its foot *through* the floor to get infinite positive points.
+            feet_height_penalty += max(0.0, foot_z)
+
+        # Result: If both feet are 1 meter in the air, feet_height_penalty = -2.0.
+        # If both feet are flat on the floor (z=0), feet_height_penalty = 0.0.
 
         # 3. REWARD COMPONENTS
 
@@ -660,7 +677,7 @@ class HumanStandEnv(gymnasium.Env):
         #     reward_feet = self.weights["feet_contact"] * feet_contact_raw
         # else:
         #     reward_feet = 0.0
-        reward_feet = self.weights["feet_contact"] * feet_contact_raw
+        reward_feet = self.weights["feet_contact"] * feet_height_penalty
 
         # Self Collision Penalty
         # SELF-COLLISION PENALTY
@@ -902,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run119",
+            tb_log_name="V12_Run120",
         )
 
         model.save("humanoid_v12_final")
