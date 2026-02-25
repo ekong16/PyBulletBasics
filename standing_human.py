@@ -902,7 +902,7 @@ if __name__ == "__main__":
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(1.0e-4, min_value=0),
-            learning_rate=1.0e-4,
+            learning_rate=5.0e-5,
             n_steps=4096,  # buffer of training data
             batch_size=2048,  # Batch size passed at once to NN
             n_epochs=5,  # number of times entire buffer passed to NN
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run120",
+            tb_log_name="V12_Run124",
         )
 
         model.save("humanoid_v12_final")
