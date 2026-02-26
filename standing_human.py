@@ -492,7 +492,7 @@ class HumanStandEnv(gymnasium.Env):
         # Penalty = 17.0 * -0.05 = -0.85 per step.
         self.current_energy_cost = np.sum(np.square(action))
 
-        torque_scale = 0.25
+        torque_scale = 0.50
         # --- 2. PRE-CALCULATE TORQUES ---
         # We calculate the target torques ONCE per policy step
         # but apply them multiple times in the physics loop.
@@ -869,7 +869,7 @@ if __name__ == "__main__":
     with utils.PyBulletSim(gui=False) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 1_200_000
+        TOTAL_TIMESTEPS = 10_000_000
 
         env = HumanStandEnv(humanoid_id, plane_id)
         # env = GravityCurriculumWrapper(
@@ -901,8 +901,8 @@ if __name__ == "__main__":
             use_sde=True,  # <--- Stops the flailing
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            # learning_rate=linear_schedule(1.0e-4, min_value=0),
-            learning_rate=5.0e-5,
+            learning_rate=linear_schedule(5.0e-5, min_value=0),
+            # learning_rate=5.0e-5,
             n_steps=4096,  # buffer of training data
             batch_size=2048,  # Batch size passed at once to NN
             n_epochs=5,  # number of times entire buffer passed to NN
@@ -919,7 +919,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run127",
+            tb_log_name="V12_Run129",
         )
 
         model.save("humanoid_v12_final")
