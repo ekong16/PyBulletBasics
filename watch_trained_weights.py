@@ -37,11 +37,12 @@ with utils.PyBulletSim(gui=True) as client:
     env_normalized.training = False
     env_normalized.norm_reward = False
 
+    obs = env_normalized.reset()
+
     utils.print_joint_info(my_humanoid_id)
     utils.print_dynamics_info(my_humanoid_id)
     utils.print_link_states(my_humanoid_id)
 
-    obs = env_normalized.reset()
     # Burn 10 steps to fill the frame stack with real physics data
     zero_action = env_normalized.action_space.sample() * 0.0
     for _ in range(10):

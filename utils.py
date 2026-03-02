@@ -6,6 +6,80 @@ from tabulate import tabulate
 import random
 import math
 
+import pybullet as p
+import numpy as np
+from PIL import Image
+
+
+import pybullet as p
+import numpy as np
+from PIL import Image
+
+
+class PyBulletCamera:
+    def __init__(
+        self,
+        width=256,
+        height=256,
+        target_pos=[0, 0, 0.5],
+        distance=1.5,
+        yaw=45,
+        pitch=-30,
+    ):
+        self.width = width
+        self.height = height
+        self.target_pos = target_pos
+        self.distance = distance
+        self.yaw = yaw
+        self.pitch = pitch
+        self.roll = 0
+        self.fov = 60
+        self.near = 0.1
+        self.far = 100.0
+        self.latest_frame = None
+
+    def update(self, client_id=0):
+        """Calls the camera once. Feeds the PiP preview AND caches the image."""
+        view_matrix = p.computeViewMatrixFromYawPitchRoll(
+            cameraTargetPosition=self.target_pos,
+            distance=self.distance,
+            yaw=self.yaw,
+            pitch=self.pitch,
+            roll=self.roll,
+            upAxisIndex=2,
+            physicsClientId=client_id,
+        )
+
+        proj_matrix = p.computeProjectionMatrixFOV(
+            fov=self.fov,
+            aspect=self.width / self.height,
+            nearVal=self.near,
+            farVal=self.far,
+            physicsClientId=client_id,
+        )
+
+        # This single call automatically updates the PyBullet GUI preview window
+        _, _, rgb_img, _, _ = p.getCameraImage(
+            self.width,
+            self.height,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix,
+            physicsClientId=client_id,
+            renderer=p.ER_BULLET_HARDWARE_OPENGL,
+            shadow=1,  # Turn shadows ON
+            lightDirection=[1, 1, 1],  # Point the "Sun" diagonally down
+        )
+
+        # Slice RGB and cache as 8-bit integers (retains color for PIL!)
+        img_arr = np.reshape(rgb_img, (self.height, self.width, 4))[:, :, :3]
+        self.latest_frame = np.uint8(img_arr)
+
+    def get_last_image(self):
+        """Instantly returns the cached frame as a PIL Image."""
+        if self.latest_frame is not None:
+            return Image.fromarray(self.latest_frame)
+        return None
+
 
 class PyBulletSim:
     def __init__(self, gui=True):
