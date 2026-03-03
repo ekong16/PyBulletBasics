@@ -22,7 +22,7 @@ class PyBulletCamera:
         width=256,
         height=256,
         target_pos=[0, 0, 0.5],
-        distance=1.5,
+        distance=3.6,
         yaw=45,
         pitch=-30,
     ):

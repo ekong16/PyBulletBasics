@@ -27,7 +27,7 @@ p.setAdditionalSearchPath(pybullet_data.getDataPath())
 # EXPLICIT PHYSICS CONFIG
 DT = 1.0 / 240.0
 p.setTimeStep(DT)
-# p.setGravity(0, 0, -9.8)
+p.setGravity(0, 0, -9.8)
 
 # PREVIEW CONFIG (Shadows + Color)
 p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1)
@@ -88,8 +88,8 @@ while True:
     step_counter += 1
 
     # Update visual preview at a lower frequency for performance
-    # if step_counter % CAMERA_FREQ == 0:
-    camera.update(client_id=physicsClient)
+    if step_counter % CAMERA_FREQ == 0:
+        camera.update(client_id=physicsClient)
 
     # Process Joints
     for joint_index, control in joint_controls.items():
@@ -122,4 +122,4 @@ while True:
             pose_counter += 1
 
     # Sync loop speed to real-time (240 iterations per second)
-    time.sleep(DT)
+    # time.sleep(DT)
