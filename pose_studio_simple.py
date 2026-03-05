@@ -4,7 +4,7 @@ import time
 import os
 import math
 import numpy as np
-from utils import PyBulletCamera, SimConfig
+from utils import PyBulletCamera, SimConfig, enable_headless_opengl
 
 
 # --- 1. SETUP & SAFETY ---
@@ -21,6 +21,7 @@ os.makedirs("poses", exist_ok=True)
 if p.isConnected():
     p.disconnect()
 physicsClient = p.connect(p.GUI)
+enable_headless_opengl(physicsClient)
 p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
 DT = 1.0 / 240.0

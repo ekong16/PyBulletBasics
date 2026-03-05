@@ -428,7 +428,7 @@ class HumanStandEnv(gymnasium.Env):
         obs = self._get_obs()
 
         self.steps_count += 1
-        truncated = self.steps_count > self.max_steps
+        truncated = self.steps_count >= self.max_steps
         info = {"decomposition": decomposition}
 
         return obs, reward, done, truncated, info
@@ -537,7 +537,7 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=False) as client:
+    with utils.PyBulletSim(gui=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 288

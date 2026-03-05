@@ -5,6 +5,7 @@ import numpy as np
 from tabulate import tabulate
 import random
 import math
+import pkgutil
 
 from PIL import Image
 
@@ -21,6 +22,28 @@ import multiprocessing
 
 # Global cache to prevent redundant loading across scripts
 _JEPA_CACHE = {"model": None, "processor": None}
+
+
+def enable_headless_opengl(client_id):
+    """
+    Enables hardware OpenGL rendering for headless (p.DIRECT) sessions.
+    Safe to call even in GUI mode; it will just skip if EGL isn't needed.
+    """
+    conn_info = p.getConnectionInfo(physicsClientId=client_id)
+    if conn_info["connectionMethod"] == p.DIRECT:
+        egl = pkgutil.get_loader("eglRenderer")
+        if egl:
+            plugin_id = p.loadPlugin(
+                egl.get_filename(), "_eglRendererPlugin", physicsClientId=client_id
+            )
+            if plugin_id >= 0:
+                print(
+                    "🚀 EGL Render Plugin loaded (Hardware OpenGL enabled for headless)"
+                )
+            return plugin_id
+        else:
+            print("EGL not found!!!!")
+    return -1
 
 
 class JEPAEngine:
@@ -157,6 +180,7 @@ class PyBulletSim:
             p.disconnect()
         # Start a new connection
         self.client = p.connect(p.GUI if self.gui else p.DIRECT)
+        enable_headless_opengl(self.client)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, -9.8)
         return self.client
