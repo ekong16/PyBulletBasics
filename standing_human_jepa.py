@@ -1,0 +1,506 @@
+import pybullet as p
+import pybullet_data
+import gymnasium
+from gymnasium import spaces
+import numpy as np
+import math
+import random
+import utils
+from stable_baselines3 import PPO
+from stable_baselines3.common.vec_env import VecNormalize, VecFrameStack, DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import BaseCallback
+from typing import Callable
+import torch as th
+
+# ==========================================
+# GLOBAL VARS & CONFIG
+# ==========================================
+INITIAL_POSITION = utils.SimConfig.INITIAL_POS
+ROLL, PITCH, YAW = (
+    utils.SimConfig.START_ORI[0],
+    utils.SimConfig.START_ORI[1],
+    utils.SimConfig.START_ORI[2],
+)
+START_ORIENTATION = p.getQuaternionFromEuler([ROLL, PITCH, YAW])
+
+MAX_TORQUE_MAP = {
+    "chest": [500, 500, 500],
+    "neck": [200, 200, 200],  # Fixed dangling neck
+    "right_shoulder": [200, 200, 200],
+    "left_shoulder": [200, 200, 200],
+    "right_elbow": 100,
+    "left_elbow": 100,
+    "right_hip": [800, 800, 800],  # Massive hip power for 6m lever
+    "left_hip": [800, 800, 800],
+    "right_knee": 800,  # Massive knee power for crouching
+    "left_knee": 800,
+    "right_ankle": [400, 400, 400],  # Strong ankles to stop toppling
+    "left_ankle": [400, 400, 400],
+}
+
+TARGET_HEAD = 1.94
+TARGET_CHEST = 1.60
+TARGET_ROOT = 1.23
+
+
+def linear_schedule(
+    initial_value: float, min_value: float = 1e-6
+) -> Callable[[float], float]:
+    """
+    Decays the learning rate linearly from initial_value to min_value.
+    """
+
+    def func(progress_remaining: float) -> float:
+        # progress_remaining starts at 1.0 (start) and goes to 0.0 (end)
+
+        # Calculate the drop range
+        decay_range = initial_value - min_value
+
+        # Current rate = Minimum Floor + (Amount left to decay)
+        current_rate = min_value + (progress_remaining * decay_range)
+
+        return current_rate
+
+    return func
+
+
+class RewardLoggerCallback(BaseCallback):
+    def _on_step(self) -> bool:
+        for info in self.locals["infos"]:
+            if "decomposition" in info:
+                for key, value in info["decomposition"].items():
+                    self.logger.record(f"reward/{key}", value)
+        return True
+
+
+def Apply128kgMasses(humanoid_id):
+    """
+    The 'Power of Two' Build.
+    Target Total Mass: EXACTLY 128.0 kg.
+
+    Distribution Strategy:
+    - Root (33kg) acts as the primary CoM anchor.
+    - Legs (57kg) are kept heavy to prevent 'stilts' effect.
+    - Chest (20kg) is lightened to reduce the load on your 400Nm ankles.
+    """
+    mass_map = {
+        # --- THE ANCHOR (33.0 kg) ---
+        "root": 33.0,
+        # --- THE UPPER BODY (38.0 kg Total) ---
+        # Chest reduced to 20kg to help stability.
+        "chest": 20.0,
+        "neck": 4.0,  # Heavy Head (4kg)
+        "right_shoulder": 3.5,
+        "left_shoulder": 3.5,
+        "right_elbow": 2.5,
+        "left_elbow": 2.5,
+        "right_wrist": 1.0,
+        "left_wrist": 1.0,
+        # --- THE BASE (57.0 kg Total) ---
+        # Legs are ~45% of total mass. Good for stability.
+        "right_hip": 16.0,
+        "left_hip": 16.0,
+        "right_knee": 10.0,
+        "left_knee": 10.0,
+        "right_ankle": 2.5,
+        "left_ankle": 2.5,
+    }
+
+    print("\n--- APPLYING 128kg MASS DISTRIBUTION ---")
+    total_mass = 0.0
+
+    for j in range(p.getNumJoints(humanoid_id)):
+        info = p.getJointInfo(humanoid_id, j)
+        link_name = info[12].decode("utf-8")
+
+        # Default fallback (very light)
+        target_mass = 0.1
+
+        for key, mass in mass_map.items():
+            if key in link_name:
+                target_mass = mass
+                break
+
+        p.changeDynamics(humanoid_id, j, mass=target_mass)
+        total_mass += target_mass
+
+    # Base (-1) - The final rounding error handler
+    # We set it to 0.0 to keep the sum clean, or 0.1 if bullet complains.
+    # (Physics engines usually prefer non-zero mass, so we'll use a tiny epsilon elsewhere
+    # but for your 128kg goal, the links above sum to 128.0 exactly).
+    p.changeDynamics(humanoid_id, -1, mass=1e-3)
+
+    print(f"--- TOTAL MASS: {total_mass:.1f} kg ---")
+    print(f"--- 128.0 KG LOCKED IN. ---")
+    return total_mass
+
+
+def resetJointMotorsAndState(humanoid_id):
+    p.resetBasePositionAndOrientation(humanoid_id, INITIAL_POSITION, START_ORIENTATION)
+    for j in range(p.getNumJoints(humanoid_id)):
+        info = p.getJointInfo(humanoid_id, j)
+        jt = info[2]
+
+        # --- APPLY DAMPING ---
+        # 1.0 is a good starting point. It eats up kinetic energy.
+        # This allows high torque (strength) but prevents high velocity (flailing).
+        p.changeDynamics(
+            humanoid_id,
+            j,
+            jointDamping=0.5,
+            angularDamping=0.1,  # Resists the link's tendency to spin wildly
+            # Set to a very high number to stop the engine from 'clamping'
+            # and causing the 'flying' teleportation glitch.
+            # maxJointVelocity=50.0,
+        )
+
+        if jt in [p.JOINT_REVOLUTE, p.JOINT_PRISMATIC]:
+            p.resetJointState(humanoid_id, j, 0, 0)
+            p.setJointMotorControl2(humanoid_id, j, p.VELOCITY_CONTROL, force=0)
+        elif jt == p.JOINT_SPHERICAL:
+            p.resetJointStateMultiDof(humanoid_id, j, [0, 0, 0, 1], [0, 0, 0])
+            p.setJointMotorControlMultiDof(
+                humanoid_id,
+                j,
+                p.POSITION_CONTROL,
+                targetPosition=[0, 0, 0, 1],
+                force=[0, 0, 0],
+            )
+
+    for link in [5, 8]:
+        p.changeDynamics(humanoid_id, link, lateralFriction=5.0, rollingFriction=1.0)
+
+    for link in [11, 14]:
+        p.changeDynamics(
+            humanoid_id,
+            link,
+            lateralFriction=10.0,
+            contactStiffness=30000,  # Prevents the "infinite hardness" bounce
+            contactDamping=1000,  # Absorbs the impact energy at the foot-floor interface
+        )
+
+
+class HumanStandEnv(gymnasium.Env):
+    def __init__(self, humanoid_id, plane_id):
+        super().__init__()
+        self.humanoid_id = humanoid_id
+        self.plane_id = plane_id
+        self.max_steps = 24  # Increased slightly to allow for stability testing
+        self.steps_count = 0
+        self.episode_count = 0
+
+        self.last_action = None
+
+        self.weights = {
+            "chest_height": 6.0,  # Primary motivator
+            "root_height": 5.0,  # Secondary motivator
+            "neck_height": 5.0,  # High priority to encourage lifting the head
+            "uprightness": 12.0,  # Orientation weight
+            "feet_contact": -0.5,  # really now feet height
+            "self_contact": -2.0,
+            "neck_orientation": 5.0,  # Keeps the head looking forward/level
+            "chest_vel": 0.0,  # Gated velocity (only works when low)
+            "energy_cost": -0.10,  # PENALTY: Applied to sum(action^2)
+            "action_rate_cost": -0.5,
+            "survival_bonus": 0.0,  # BONUS: Applied every step alive
+            "termination_penalty": -10.0,
+        }
+
+        self.total_mass = Apply128kgMasses(self.humanoid_id)
+        self.robot_weight = self.total_mass * 9.81
+
+        print(f"DEBUG: Robot Total Mass: {self.total_mass:.2f} kg")
+        print(f"DEBUG: Robot Weight: {self.robot_weight:.2f} N")
+
+        self._init_spaces()
+
+    def _init_spaces(self):
+        n_joints = p.getNumJoints(self.humanoid_id)
+        self.joint_indices = []
+        self.dof_per_joint = []
+        obs_dim = 0
+
+        for j in range(n_joints):
+            self.joint_indices.append(j)
+            jt = p.getJointInfo(self.humanoid_id, j)[2]
+            if jt == p.JOINT_SPHERICAL:
+                self.dof_per_joint.append(3)  # Action: 3 Torques
+                obs_dim += 7  # Obs: 4 Quat + 3 Vel
+            elif jt == p.JOINT_REVOLUTE:
+                self.dof_per_joint.append(1)  # Action: 1 Torque
+                obs_dim += 2  # Obs: 1 Angle + 1 Vel
+            else:
+                self.dof_per_joint.append(0)
+
+        self.action_space = spaces.Box(
+            low=-1, high=1, shape=(sum(self.dof_per_joint),), dtype=np.float32
+        )
+        self.last_action = np.zeros(sum(self.dof_per_joint), dtype=np.float32)
+
+        # Obs Space breakdown:
+        # 1. Joint Data (obs_dim)
+        # 2. Root Pos (3) + Root Orn (4) + Root AngVel (3) = 10
+        # 3. Assist Factors (Kp, Kd) = 2 -- Nuked to 0
+        # Total Extras = 12
+        self.observation_space = spaces.Box(
+            low=-np.inf,
+            high=np.inf,
+            shape=(obs_dim + 10 + sum(self.dof_per_joint),),
+            dtype=np.float32,
+        )
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.episode_count += 1
+        self.steps_count = 0
+        self.current_energy_cost = 0.0
+        self.last_action = np.zeros(sum(self.dof_per_joint), dtype=np.float32)
+
+        # Randomize friction slightly to improve robustness
+        p.changeDynamics(self.plane_id, -1, lateralFriction=1.0)
+        # p.changeDynamics(self.plane_id, -1, lateralFriction=random.uniform(0.5, 1.2))
+
+        resetJointMotorsAndState(self.humanoid_id)
+
+        for _ in range(256):
+            p.stepSimulation()
+        return self._get_obs(), {}
+
+    def step(self, action):
+        printOn = True
+        printStep = self.steps_count % 12 == 0
+        if printStep and printOn:
+            print(
+                f"\n--- EPISODE {self.episode_count} | STEP {self.steps_count} | FORCE DIAGNOSTICS ---"
+            )
+
+        torque_scale = 0.25
+        # --- 2. PRE-CALCULATE TORQUES ---
+        # We calculate the target torques ONCE per policy step
+        # but apply them multiple times in the physics loop.
+        prepared_torques = []
+        action_idx = 0
+
+        if printStep and printOn:
+            print("LAST ACTION:", self.last_action)
+
+        for j in self.joint_indices:
+            name = p.getJointInfo(self.humanoid_id, j)[1].decode("utf-8")
+            if name not in MAX_TORQUE_MAP:
+                continue
+            max_f = np.array(MAX_TORQUE_MAP[name]) * torque_scale
+
+            if self.dof_per_joint[j] == 1:
+                act_val = action[action_idx]
+                torque = act_val * max_f
+                if printStep and printOn:
+                    effort_pct = abs(act_val) * 100
+                    print(
+                        f"Joint: {name:<15} | Action: {act_val:>18.2f}   | Effort: {effort_pct:>5.1f}% | Torque: {torque:>22.1f} Nm"
+                    )
+                prepared_torques.append((j, 1, torque))
+                action_idx += 1
+            elif self.dof_per_joint[j] == 3:
+                raw_actions = action[action_idx : action_idx + 3]
+                torques = raw_actions * max_f
+                if printStep and printOn:
+                    effort_pct = np.linalg.norm(raw_actions) / math.sqrt(3) * 100
+                    act_str = f"[{raw_actions[0]:5.2f}, {raw_actions[1]:5.2f}, {raw_actions[2]:5.2f}]"
+                    trq_str = (
+                        f"[{torques[0]:6.1f}, {torques[1]:6.1f}, {torques[2]:6.1f}]"
+                    )
+                    print(
+                        f"Joint: {name:<15} | Action: {act_str:>21} | Effort: {effort_pct:>5.1f}% | Torque: {trq_str:>25} Nm"
+                    )
+                prepared_torques.append((j, 3, list(torques)))
+                action_idx += 3
+
+        for _ in range(160):
+            self._apply_spring_force()
+
+            # Apply Motor Torques at every simulation tick (240Hz)
+            for j_idx, dof, val in prepared_torques:
+                if dof == 1:
+                    p.setJointMotorControl2(
+                        self.humanoid_id, j_idx, p.TORQUE_CONTROL, force=val
+                    )
+                else:
+                    p.setJointMotorControlMultiDof(
+                        self.humanoid_id, j_idx, p.TORQUE_CONTROL, force=val
+                    )
+
+            p.stepSimulation()
+
+        obs = self._get_obs()
+        reward, done, decomposition = self._get_reward(action)
+
+        self.steps_count += 1
+        truncated = self.steps_count >= self.max_steps
+        info = {"decomposition": decomposition}
+
+        return obs, reward, done, truncated, info
+
+    def _get_reward(self, action):
+        # D. ACTION PENALTY (New)
+
+        action_diff = action - self.last_action
+        # raw_action_rate = np.linalg.norm(action_diff)
+        raw_action_rate = np.sum(np.square(action_diff))
+        self.last_action = action.copy()
+        action_rate_cost = raw_action_rate * self.weights["action_rate_cost"]
+
+        total_reward = (
+            reward_chest
+            + reward_root
+            + reward_upright
+            # + reward_vel
+            + reward_energy
+            # + reward_survival
+            + reward_feet
+            + reward_term
+            + reward_neck_height
+            + reward_neck_orient
+            + action_rate_cost
+            + self_collision_cost
+        )
+
+        decomp = {
+            "01_chest_height": reward_chest,
+            "02_root_height": reward_root,
+            "03_upright": reward_upright,
+            #            "04_velocity": reward_vel,
+            "05_energy": reward_energy,
+            # "06_survival": reward_survival,
+            "07_feet": reward_feet,
+            "08_term": reward_term,
+            "09_neck_height": reward_neck_height,
+            "10_neck_uprightness": reward_neck_orient,
+            "11_action_rate_cost": action_rate_cost,
+            "12_self_collision": self_collision_cost,
+            "z_TOTAL": total_reward,
+        }
+
+        return total_reward, done, decomp
+
+    def _get_obs(self):
+        joint_obs = []
+        debug_labels = []  # Store names for the printout
+
+        for j in range(p.getNumJoints(self.humanoid_id)):
+            info = p.getJointInfo(self.humanoid_id, j)
+            jt = info[2]
+            name = info[1].decode("utf-8")  # Joint Name
+
+            if jt == p.JOINT_SPHERICAL:
+                # 7 Values: 4 Quat + 3 Vel
+                state = p.getJointStateMultiDof(self.humanoid_id, j)
+                joint_obs.extend(state[0])
+                joint_obs.extend(state[1])
+
+                # Add labels
+                debug_labels.extend(
+                    [f"{name}_qx", f"{name}_qy", f"{name}_qz", f"{name}_qw"]
+                )
+                debug_labels.extend([f"{name}_vx", f"{name}_vy", f"{name}_vz"])
+
+            elif jt == p.JOINT_REVOLUTE:
+                # 2 Values: 1 Ang + 1 Vel
+                state = p.getJointState(self.humanoid_id, j)
+                joint_obs.append(state[0])
+                joint_obs.append(state[1])
+
+                # Add labels
+                debug_labels.extend([f"{name}_ang", f"{name}_vel"])
+
+        # Root State
+        pos, orn = p.getBasePositionAndOrientation(self.humanoid_id)
+        _, ang_vel = p.getBaseVelocity(self.humanoid_id)
+
+        # Merge Data
+        final_obs = (
+            joint_obs + list(pos) + list(orn) + list(ang_vel) + list(self.last_action)
+        )
+
+        # --- DIAGNOSTIC LOGGER  ---
+        if self.steps_count % 256 == 0:
+            # Add remaining labels
+            debug_labels.extend(["Root_X", "Root_Y", "Root_Z"])
+            debug_labels.extend(["Root_Qx", "Root_Qy", "Root_Qz", "Root_Qw"])
+            debug_labels.extend(["Root_Wx", "Root_Wy", "Root_Wz"])
+
+            # Add labels for Last Action
+            # (We use indices since 'joint names' map awkwardly to raw action indices)
+            for k in range(len(self.last_action)):
+                debug_labels.append(f"LastAct_{k}")
+
+            print(f"\n--- OBS DEBUG (Step {self.steps_count}) ---")
+            print(f"{'INDEX':<6} | {'LABEL':<25} | {'VALUE':<10}")
+            print("-" * 45)
+            for i, (label, val) in enumerate(zip(debug_labels, final_obs)):
+                # Highlight Root Z and Kp visually
+                marker = (
+                    " <---" if label in ["Root_Z", "Assist_Kp", "LastAct_0"] else ""
+                )
+                print(f"{i:<6} | {label:<25} | {val:>10.4f}{marker}")
+            print("-" * 45 + "\n")
+
+        return np.array(final_obs, dtype=np.float32)
+
+
+# ==========================================
+# MAIN EXECUTION
+# ==========================================
+if __name__ == "__main__":
+    with utils.PyBulletSim(gui=False) as client:
+        humanoid_id, plane_id = utils.setup_humanoid_scene(p)
+
+        TOTAL_TIMESTEPS = 10_000_000
+
+        env = HumanStandEnv(humanoid_id, plane_id)
+        env = Monitor(env)
+        env = DummyVecEnv([lambda: env])
+        env = VecFrameStack(env, n_stack=8)
+        env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=88.8)
+
+        utils.print_joint_info(humanoid_id)
+        utils.print_dynamics_info(humanoid_id)
+        utils.print_link_states(humanoid_id)
+
+        # MODEL CONFIGURATION
+        # Define the policy architecture
+        policy_kwargs = dict(
+            activation_fn=th.nn.Tanh,
+            net_arch=dict(pi=[256, 256], vf=[256, 256]),
+            log_std_init=-2.0,
+        )
+        model = PPO(
+            "MlpPolicy",
+            env,
+            policy_kwargs=policy_kwargs,
+            use_sde=True,  # <--- Stops the flailing
+            sde_sample_freq=4,  # smooths noise every 4 steps
+            verbose=1,
+            learning_rate=linear_schedule(5.0e-5, min_value=0),
+            # learning_rate=5.0e-5,
+            n_steps=4096,  # buffer of training data
+            batch_size=2048,  # Batch size passed at once to NN
+            n_epochs=5,  # number of times entire buffer passed to NN
+            gamma=0.995,
+            gae_lambda=0.95,
+            clip_range=0.2,
+            ent_coef=0.001,
+            vf_coef=1.0,
+            max_grad_norm=0.5,
+            tensorboard_log="./logs/",
+        )
+        print(model.policy)
+        print("--- Starting Training with Gated Velocity & Energy Penalty ---")
+        model.learn(
+            total_timesteps=TOTAL_TIMESTEPS,
+            callback=RewardLoggerCallback(),
+            tb_log_name="V12_Run130",
+        )
+
+        model.save("humanoid_v12_final")
+        env.save("vec_normalize_v12.pkl")

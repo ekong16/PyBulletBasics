@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoVideoProcessor, AutoModel
 from PIL import Image
+import numpy as np
 
 # Suppress duplicate library warnings on some systems
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -31,7 +32,8 @@ def get_raw_latent_grid(image_path):
     img = Image.open(image_path).convert("RGB")
 
     # 'Stillness Trick': Repeat image to create a 16-frame 'static video'
-    video_clip = [img] * 16
+    video_clip = np.asarray([img] * 16)
+    print("video clip shape: ", video_clip.shape)
     inputs = processor(video_clip, return_tensors="pt")
 
     with torch.no_grad():
@@ -76,6 +78,7 @@ for pose_name, filepath in TEST_POSES.items():
     print("Predicting: ", pose_name)
     current_grid = get_raw_latent_grid(filepath)
     print("...done!")
+    print("THE SHAPE IS: ", current_grid.shape)
 
     if current_grid is not None:
         # With raw grids, MSE is the standard metric to measure distance
