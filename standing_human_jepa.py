@@ -13,6 +13,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
 import torch as th
 import os
+import cv2
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import torch.nn.functional as F
@@ -111,6 +112,65 @@ class RewardLoggerCallback(BaseCallback):
                 for key, value in info["decomposition"].items():
                     self.logger.record(f"reward/{key}", value)
         return True
+
+
+def save_labeled_video(video_buffer, mse, episode, folder="recordings"):
+    """
+    Saves the 16-frame buffer to disk with the MSE burned into the corner.
+    """
+    os.makedirs(folder, exist_ok=True)
+    filepath = os.path.join(folder, f"ep_{episode:03d}_mse_{mse:.4f}.mp4")
+
+    # Define the codec and create VideoWriter object (H.264)
+    # 256x256 is your current resolution
+    fourcc = cv2.VideoWriter_fourcc(*"avc1")
+    out = cv2.VideoWriter(filepath, fourcc, 8.0, (256, 256))
+
+    if video_buffer.dtype != np.uint8:
+        # If it's 0-1 floats, scale it up
+        if video_buffer.max() <= 1.0:
+            video_buffer = (video_buffer * 255).astype(np.uint8)
+        else:
+            video_buffer = video_buffer.astype(np.uint8)
+
+    for i in range(video_buffer.shape[0]):
+        frame = np.ascontiguousarray(video_buffer[i])
+        assert frame.shape == (256, 256, 3)
+
+        # 1. Ensure frame is BGR for OpenCV
+        assert frame.shape[-1] == 3
+        if frame.shape[-1] == 3:
+            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        else:
+            frame_bgr = frame
+        # 2. Burn-in Info (Top Left: Slow-mo | Bottom Left: MSE)
+        label_top = "6x Slow Motion (8 FPS)"
+        label_bot = f"Ep: {episode} | MSE: {mse:.4f}"
+
+        # Style settings
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.5
+        thickness = 1
+
+        # Add labels with a slight drop shadow
+        for text, pos in [(label_top, (10, 20)), (label_bot, (10, 240))]:
+            cv2.putText(
+                frame_bgr,
+                text,
+                (pos[0] + 1, pos[1] + 1),
+                font,
+                scale,
+                (0, 0, 0),
+                thickness + 1,
+            )  # Shadow
+            cv2.putText(
+                frame_bgr, text, pos, font, scale, (255, 255, 255), thickness
+            )  # Text
+
+        out.write(frame_bgr)
+
+    out.release()
+    print(f"🎬 Video saved to {filepath}")
 
 
 def Apply128kgMasses(humanoid_id):
@@ -221,10 +281,11 @@ def resetJointMotorsAndState(humanoid_id):
 
 
 class HumanStandEnv(gymnasium.Env):
-    def __init__(self, humanoid_id, plane_id):
+    def __init__(self, humanoid_id, plane_id, video_dir):
         super().__init__()
         self.humanoid_id = humanoid_id
         self.plane_id = plane_id
+        self.video_dir = video_dir
         self.max_steps = 18  # Increased slightly to allow for stability testing
         self.steps_count = 0
         self.episode_count = 0
@@ -357,9 +418,12 @@ class HumanStandEnv(gymnasium.Env):
 
             if tick % 10 == 0:
                 self.camera.update()
-                video_buffer.append(self.camera.get_last_image())
+                img = self.camera.get_last_image()
+                video_buffer.append(img)
 
         video_buffer = np.asarray(video_buffer)
+        # print("shape of image", np.asarray(img).shape)
+        # print("Shape of video", video_buffer.shape)
         reward, done, decomposition = self._get_reward(action, video_buffer)
         obs = self._get_obs()
 
@@ -386,6 +450,15 @@ class HumanStandEnv(gymnasium.Env):
         vjepa_reward = -mse_dist
 
         total_reward = vjepa_reward  # + action_rate_cost
+
+        # if self.steps_count == self.max_steps:  # and self.episode_count % 2 == 0:
+        #     save_labeled_video(
+        #         video_buffer, mse_dist, self.episode_count, folder=self.video_dir
+        #     )
+
+        save_labeled_video(
+            video_buffer, mse_dist, self.episode_count, folder=self.video_dir
+        )
 
         decomp = {
             "01_vjepa_reward": vjepa_reward,
@@ -468,8 +541,9 @@ if __name__ == "__main__":
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 288
-
-        env = HumanStandEnv(humanoid_id, plane_id)
+        RUN_NAME = "V1_Run1_TEST"
+        VIDEO_DIR = "videos/" + RUN_NAME
+        env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
         env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=88.8)
@@ -510,7 +584,7 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V1_Run1_TEST",
+            tb_log_name=RUN_NAME,
         )
 
         model.save("jepa_humanoid_v1_final")

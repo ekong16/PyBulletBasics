@@ -168,6 +168,7 @@ while True:
         prev_btn_val = btn_val
         img = camera.get_last_image()
         if img:
+            print("SHAPE:", np.asarray(img).shape)
             path = f"poses/pose_{pose_counter}.jpg"
             img.save(path)
             print(f"✅ Saved: {path}")
