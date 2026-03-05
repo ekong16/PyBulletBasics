@@ -6,14 +6,80 @@ from tabulate import tabulate
 import random
 import math
 
-import pybullet as p
-import numpy as np
 from PIL import Image
 
+import os
 
-import pybullet as p
-import numpy as np
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
+import torch
+import torch.nn.functional as F
+from transformers import AutoVideoProcessor, AutoModel
 from PIL import Image
+import numpy as np
+import multiprocessing
+
+# Global cache to prevent redundant loading across scripts
+_JEPA_CACHE = {"model": None, "processor": None}
+
+
+class JEPAEngine:
+    def __init__(self, model_id="facebook/vjepa2-vitl-fpc16-256-ssv2", device="cpu"):
+        self.device = device
+
+        # Hardware Overclock: Only set if not already configured ... not use it for now
+        # if not torch.get_num_threads() > 1:
+        #     cores = multiprocessing.cpu_count()
+        #     torch.set_num_threads(cores)
+        #     torch.set_num_interop_threads(cores)
+
+        if _JEPA_CACHE["model"] is None:
+            print(f"🧠 Loading {model_id} into RAM...")
+            _JEPA_CACHE["processor"] = AutoVideoProcessor.from_pretrained(model_id)
+            _JEPA_CACHE["model"] = AutoModel.from_pretrained(model_id).to(self.device)
+            _JEPA_CACHE["model"].eval()
+
+        self.model = _JEPA_CACHE["model"]
+        self.processor = _JEPA_CACHE["processor"]
+
+    def get_latent(self, video_frames, verbose=False):
+        """
+        Extracts latents with optional profiling and dtype inspection.
+        video_frames: List or Array of 16 frames (uint8).
+        """
+        t0_wall = time.perf_counter()
+        t0_cpu = time.process_time()
+
+        inputs = self.processor(video_frames, return_tensors="pt")
+
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+            # Standard V-JEPA 2 output is the last hidden state
+            raw_latent = outputs.last_hidden_state
+
+        if verbose:
+            wall_time = time.perf_counter() - t0_wall
+            cpu_time = time.process_time() - t0_cpu
+
+            # The "Inspector" logic
+            input_dtype = inputs[next(iter(inputs))].dtype
+            model_dtype = next(self.model.parameters()).dtype
+
+            print(f"\n--- [JEPA DEBUG PROFILE] ---")
+            print(
+                f"Inputs: {input_dtype} | Model: {model_dtype} | Latent: {raw_latent.dtype}"
+            )
+            print(f"Input Shape: {video_frames.shape}")
+            print(
+                f"Raw Latent Shape: {raw_latent.shape} (Tokens: {raw_latent.shape[1]})"
+            )
+            print(f"⏱️ Wall Time: {wall_time:.2f}s | CPU Time: {cpu_time:.2f}s")
+            print(f"----------------------------")
+
+        return raw_latent.to(torch.float32)
+
+    def compute_mse(self, current, target):
+        return F.mse_loss(current, target).item()
 
 
 class PyBulletCamera:

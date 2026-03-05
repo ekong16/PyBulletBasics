@@ -12,6 +12,12 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
 import torch as th
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+import torch.nn.functional as F
+from transformers import AutoVideoProcessor, AutoModel
+from PIL import Image
 
 # ==========================================
 # GLOBAL VARS & CONFIG
@@ -42,6 +48,39 @@ MAX_TORQUE_MAP = {
 TARGET_HEAD = 1.94
 TARGET_CHEST = 1.60
 TARGET_ROOT = 1.23
+
+# ==========================================
+# 1. CONFIG & V-JEPA LOADING
+# ==========================================
+# HF_REPO = "facebook/vjepa2-vitl-fpc16-256-ssv2"
+# device = "cuda" if th.cuda.is_available() else "cpu"
+
+# print(f"🧠 Loading V-JEPA 2 on {device}...")
+# processor = AutoVideoProcessor.from_pretrained(HF_REPO)
+# vjepa_model = AutoModel.from_pretrained(HF_REPO).to(device).eval()
+
+
+# def get_target_latent():
+#     target_path = "poses/standing_pose.jpg"
+#     img = Image.open(target_path).convert("RGB")
+#     video_clip = np.asarray([img] * 16)
+#     inputs = processor(video_clip, return_tensors="pt").to(device)
+#     with th.no_grad():
+#         return vjepa_model(**inputs).last_hidden_state
+
+my_jepa_model = utils.JEPAEngine()
+JEPA_VERBOSE = True
+
+
+def get_target_latent():
+    target_path = "poses/standing_pose.jpg"
+    img = Image.open(target_path).convert("RGB")
+    video_clip = np.asarray([img] * 16)
+    ret = my_jepa_model.get_latent(video_clip, verbose=JEPA_VERBOSE)
+    return ret
+
+
+TARGET_LATENT = get_target_latent()
 
 
 def linear_schedule(
@@ -186,26 +225,11 @@ class HumanStandEnv(gymnasium.Env):
         super().__init__()
         self.humanoid_id = humanoid_id
         self.plane_id = plane_id
-        self.max_steps = 24  # Increased slightly to allow for stability testing
+        self.max_steps = 18  # Increased slightly to allow for stability testing
         self.steps_count = 0
         self.episode_count = 0
-
+        self.camera = utils.PyBulletCamera()  # Your existing utility
         self.last_action = None
-
-        self.weights = {
-            "chest_height": 6.0,  # Primary motivator
-            "root_height": 5.0,  # Secondary motivator
-            "neck_height": 5.0,  # High priority to encourage lifting the head
-            "uprightness": 12.0,  # Orientation weight
-            "feet_contact": -0.5,  # really now feet height
-            "self_contact": -2.0,
-            "neck_orientation": 5.0,  # Keeps the head looking forward/level
-            "chest_vel": 0.0,  # Gated velocity (only works when low)
-            "energy_cost": -0.10,  # PENALTY: Applied to sum(action^2)
-            "action_rate_cost": -0.5,
-            "survival_bonus": 0.0,  # BONUS: Applied every step alive
-            "termination_penalty": -10.0,
-        }
 
         self.total_mass = Apply128kgMasses(self.humanoid_id)
         self.robot_weight = self.total_mass * 9.81
@@ -269,7 +293,7 @@ class HumanStandEnv(gymnasium.Env):
 
     def step(self, action):
         printOn = True
-        printStep = self.steps_count % 12 == 0
+        printStep = self.steps_count % (self.max_steps / 2) == 0
         if printStep and printOn:
             print(
                 f"\n--- EPISODE {self.episode_count} | STEP {self.steps_count} | FORCE DIAGNOSTICS ---"
@@ -316,9 +340,8 @@ class HumanStandEnv(gymnasium.Env):
                 prepared_torques.append((j, 3, list(torques)))
                 action_idx += 3
 
-        for _ in range(160):
-            self._apply_spring_force()
-
+        video_buffer = []
+        for tick in range(160):
             # Apply Motor Torques at every simulation tick (240Hz)
             for j_idx, dof, val in prepared_torques:
                 if dof == 1:
@@ -332,56 +355,45 @@ class HumanStandEnv(gymnasium.Env):
 
             p.stepSimulation()
 
+            if tick % 10 == 0:
+                self.camera.update()
+                video_buffer.append(self.camera.get_last_image())
+
+        video_buffer = np.asarray(video_buffer)
+        reward, done, decomposition = self._get_reward(action, video_buffer)
         obs = self._get_obs()
-        reward, done, decomposition = self._get_reward(action)
 
         self.steps_count += 1
-        truncated = self.steps_count >= self.max_steps
+        truncated = self.steps_count > self.max_steps
         info = {"decomposition": decomposition}
 
         return obs, reward, done, truncated, info
 
-    def _get_reward(self, action):
+    def _get_reward(self, action, video_buffer):
         # D. ACTION PENALTY (New)
-
         action_diff = action - self.last_action
-        # raw_action_rate = np.linalg.norm(action_diff)
-        raw_action_rate = np.sum(np.square(action_diff))
+        action_rate_cost = np.sum(np.square(action_diff)) * -0.1
         self.last_action = action.copy()
-        action_rate_cost = raw_action_rate * self.weights["action_rate_cost"]
 
-        total_reward = (
-            reward_chest
-            + reward_root
-            + reward_upright
-            # + reward_vel
-            + reward_energy
-            # + reward_survival
-            + reward_feet
-            + reward_term
-            + reward_neck_height
-            + reward_neck_orient
-            + action_rate_cost
-            + self_collision_cost
-        )
+        # 4. V-JEPA REWARD
+        # inputs = processor(video_buffer, return_tensors="pt")
+        # with th.no_grad():
+        #     current_latent = vjepa_model(**inputs).last_hidden_state
+        current_latent = my_jepa_model.get_latent(video_buffer, verbose=JEPA_VERBOSE)
+
+        # Perceptual Distance (Reward is negative MSE)
+        mse_dist = F.mse_loss(TARGET_LATENT, current_latent).item()
+        vjepa_reward = -mse_dist
+
+        total_reward = vjepa_reward  # + action_rate_cost
 
         decomp = {
-            "01_chest_height": reward_chest,
-            "02_root_height": reward_root,
-            "03_upright": reward_upright,
-            #            "04_velocity": reward_vel,
-            "05_energy": reward_energy,
-            # "06_survival": reward_survival,
-            "07_feet": reward_feet,
-            "08_term": reward_term,
-            "09_neck_height": reward_neck_height,
-            "10_neck_uprightness": reward_neck_orient,
-            "11_action_rate_cost": action_rate_cost,
-            "12_self_collision": self_collision_cost,
+            "01_vjepa_reward": vjepa_reward,
+            # "02_action_rate_penalty": action_rate_cost,
             "z_TOTAL": total_reward,
         }
 
-        return total_reward, done, decomp
+        return total_reward, False, decomp  # done is false...
 
     def _get_obs(self):
         joint_obs = []
@@ -423,7 +435,7 @@ class HumanStandEnv(gymnasium.Env):
         )
 
         # --- DIAGNOSTIC LOGGER  ---
-        if self.steps_count % 256 == 0:
+        if self.steps_count % (self.max_steps / 2) == 0:
             # Add remaining labels
             debug_labels.extend(["Root_X", "Root_Y", "Root_Z"])
             debug_labels.extend(["Root_Qx", "Root_Qy", "Root_Qz", "Root_Qw"])
@@ -455,12 +467,11 @@ if __name__ == "__main__":
     with utils.PyBulletSim(gui=False) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 10_000_000
+        TOTAL_TIMESTEPS = 288
 
         env = HumanStandEnv(humanoid_id, plane_id)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
-        env = VecFrameStack(env, n_stack=8)
         env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=88.8)
 
         utils.print_joint_info(humanoid_id)
@@ -483,8 +494,8 @@ if __name__ == "__main__":
             verbose=1,
             learning_rate=linear_schedule(5.0e-5, min_value=0),
             # learning_rate=5.0e-5,
-            n_steps=4096,  # buffer of training data
-            batch_size=2048,  # Batch size passed at once to NN
+            n_steps=18,  # buffer of training data
+            batch_size=18,  # Batch size passed at once to NN
             n_epochs=5,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
@@ -499,8 +510,8 @@ if __name__ == "__main__":
         model.learn(
             total_timesteps=TOTAL_TIMESTEPS,
             callback=RewardLoggerCallback(),
-            tb_log_name="V12_Run130",
+            tb_log_name="V1_Run1_TEST",
         )
 
-        model.save("humanoid_v12_final")
-        env.save("vec_normalize_v12.pkl")
+        model.save("jepa_humanoid_v1_final")
+        env.save("jepa_humanoid_vecnormalize.pkl")
