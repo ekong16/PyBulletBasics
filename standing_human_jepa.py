@@ -540,14 +540,15 @@ class HumanStandEnv(gymnasium.Env):
         #     )
 
         assert Target_Video is not None
-        save_labeled_video(
-            video_buffer,
-            Target_Video,
-            mse_dist,
-            self.episode_count,
-            self.steps_count,
-            folder=self.video_dir,
-        )
+        if self.episode_count % 10 == 0:
+            save_labeled_video(
+                video_buffer,
+                Target_Video,
+                mse_dist,
+                self.episode_count,
+                self.steps_count,
+                folder=self.video_dir,
+            )
 
         decomp = {
             "01_vjepa_reward": vjepa_reward,
@@ -629,8 +630,8 @@ if __name__ == "__main__":
     with utils.PyBulletSim(gui=True, disableRender=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 90
-        RUN_NAME = "V1_Run5_TEST"
+        TOTAL_TIMESTEPS = 540
+        RUN_NAME = "V1_Run7_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
@@ -656,8 +657,8 @@ if __name__ == "__main__":
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(5.0e-5, min_value=0),
-            learning_rate=5.0e-5,
-            n_steps=9,  # buffer of training data
+            learning_rate=3.0e-4,
+            n_steps=18,  # buffer of training data
             batch_size=9,  # Batch size passed at once to NN
             n_epochs=3,  # number of times entire buffer passed to NN
             gamma=0.995,
