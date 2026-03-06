@@ -693,7 +693,7 @@ if __name__ == "__main__":
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 90
-        RUN_NAME = "V1_Run4_TEST"
+        RUN_NAME = "V1_Run5_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
