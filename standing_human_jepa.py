@@ -631,12 +631,12 @@ if __name__ == "__main__":
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 540
-        RUN_NAME = "V1_Run7_TEST"
+        RUN_NAME = "V1_Run9_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
-        env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=88.8)
+        env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=5.0)
 
         utils.print_joint_info(humanoid_id)
         utils.print_dynamics_info(humanoid_id)
@@ -659,13 +659,13 @@ if __name__ == "__main__":
             # learning_rate=linear_schedule(5.0e-5, min_value=0),
             learning_rate=3.0e-4,
             n_steps=18,  # buffer of training data
-            batch_size=9,  # Batch size passed at once to NN
-            n_epochs=3,  # number of times entire buffer passed to NN
+            batch_size=18,  # Batch size passed at once to NN
+            n_epochs=10,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
             ent_coef=0.001,
-            vf_coef=1.0,
+            vf_coef=0.5,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",
         )
