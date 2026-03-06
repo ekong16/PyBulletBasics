@@ -71,17 +71,34 @@ TARGET_ROOT = 1.23
 
 my_jepa_model = utils.JEPAEngine()
 JEPA_VERBOSE = True
+Target_Video = None
+No_Robot_Video = None
 
 
 def get_target_latent():
+    global Target_Video
     target_path = "poses/standing_pose.jpg"
     img = Image.open(target_path).convert("RGB")
     video_clip = np.asarray([img] * 16)
+    Target_Video = video_clip
+    ret = my_jepa_model.get_latent(video_clip, verbose=JEPA_VERBOSE)
+    return ret
+
+
+def get_no_robot_test():
+    global No_Robot_Video
+    target_path = "poses/no_robot.jpg"
+    img = Image.open(target_path).convert("RGB")
+    video_clip = np.asarray([img] * 16)
+    No_Robot_Video = video_clip
     ret = my_jepa_model.get_latent(video_clip, verbose=JEPA_VERBOSE)
     return ret
 
 
 TARGET_LATENT = get_target_latent()
+assert Target_Video is not None
+
+# NO_ROBOT_LATENT = get_no_robot_test()
 
 
 def linear_schedule(
@@ -114,63 +131,175 @@ class RewardLoggerCallback(BaseCallback):
         return True
 
 
-def save_labeled_video(video_buffer, mse, episode, folder="recordings"):
+def save_labeled_video_OLD(
+    video_buffer, Target_Video, mse, episode, folder="recordings"
+):
     """
     Saves the 16-frame buffer to disk with the MSE burned into the corner.
     """
+    assert video_buffer is not None
+    assert Target_Video is not None
     os.makedirs(folder, exist_ok=True)
     filepath = os.path.join(folder, f"ep_{episode:03d}_mse_{mse:.4f}.mp4")
 
     # Define the codec and create VideoWriter object (H.264)
     # 256x256 is your current resolution
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    out = cv2.VideoWriter(filepath, fourcc, 8.0, (256, 256))
+    out = cv2.VideoWriter(filepath, fourcc, 8.0, (512, 256))
 
-    if video_buffer.dtype != np.uint8:
-        # If it's 0-1 floats, scale it up
-        if video_buffer.max() <= 1.0:
-            video_buffer = (video_buffer * 255).astype(np.uint8)
-        else:
-            video_buffer = video_buffer.astype(np.uint8)
+    def to_uint8(buf):
+        if buf.dtype != np.uint8:
+            return (
+                (buf * 255).astype(np.uint8)
+                if buf.max() <= 1.0
+                else buf.astype(np.uint8)
+            )
+        return buf
 
-    for i in range(video_buffer.shape[0]):
-        frame = np.ascontiguousarray(video_buffer[i])
-        assert frame.shape == (256, 256, 3)
+    buf_a = to_uint8(video_buffer)
+    buf_b = to_uint8(Target_Video)
 
-        # 1. Ensure frame is BGR for OpenCV
-        assert frame.shape[-1] == 3
-        if frame.shape[-1] == 3:
-            frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        else:
-            frame_bgr = frame
-        # 2. Burn-in Info (Top Left: Slow-mo | Bottom Left: MSE)
+    for i in range(16):
+        # 1. Grab frames and ensure they are contiguous for C++
+        frame_l = np.ascontiguousarray(buf_a[i])
+        frame_r = np.ascontiguousarray(buf_b[i])
+
+        # 2. Convert both from RGB to BGR for OpenCV
+        bgr_l = cv2.cvtColor(frame_l, cv2.COLOR_RGB2BGR)
+        bgr_r = cv2.cvtColor(frame_r, cv2.COLOR_RGB2BGR)
+
+        # 3. Horizontal Stack (RL Result on Left, Target on Right)
+        canvas = np.hstack((bgr_l, bgr_r))
+
+        # 4. Burn-in Info (Top Left of the left frame)
         label_top = "6x Slow Motion (8 FPS)"
         label_bot = f"Ep: {episode} | MSE: {mse:.4f}"
 
-        # Style settings
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        scale = 0.5
-        thickness = 1
+        # Smooth, high-contrast text settings
+        font, scale, thick, line = cv2.FONT_HERSHEY_DUPLEX, 0.45, 1, cv2.LINE_AA
 
-        # Add labels with a slight drop shadow
-        for text, pos in [(label_top, (10, 20)), (label_bot, (10, 240))]:
-            cv2.putText(
-                frame_bgr,
-                text,
-                (pos[0] + 1, pos[1] + 1),
-                font,
-                scale,
-                (0, 0, 0),
-                thickness + 1,
-            )  # Shadow
-            cv2.putText(
-                frame_bgr, text, pos, font, scale, (255, 255, 255), thickness
-            )  # Text
+        for text, pos in [(label_top, (10, 25)), (label_bot, (10, 50))]:
+            # Outline for legibility
+            cv2.putText(canvas, text, pos, font, scale, (0, 0, 0), thick + 2, line)
+            # Main white text
+            cv2.putText(canvas, text, pos, font, scale, (255, 255, 255), thick, line)
 
-        out.write(frame_bgr)
+        out.write(canvas)
 
     out.release()
     print(f"🎬 Video saved to {filepath}")
+
+
+import cv2
+import numpy as np
+import os
+
+
+def save_labeled_video(
+    video_buffer, Target_Video, mse, episode, step, folder="recordings"
+):
+    """
+    Saves the 16-frame buffer side-by-side with a border, target label, and step count.
+    """
+    assert video_buffer is not None
+    assert Target_Video is not None
+    os.makedirs(folder, exist_ok=True)
+    filepath = os.path.join(folder, f"ep_{episode:03d}_step_{step}_mse_{mse:.4f}.mp4")
+
+    # Define codec (avc1 for H.264)
+    fourcc = cv2.VideoWriter_fourcc(*"avc1")
+
+    # DIMENSIONS: 256 (Left) + 4 (Border) + 256 (Right) = 516 Width
+    video_width = 516
+    video_height = 256
+    out = cv2.VideoWriter(filepath, fourcc, 8.0, (video_width, video_height))
+
+    def to_uint8(buf):
+        if buf.dtype != np.uint8:
+            return (
+                (buf * 255).astype(np.uint8)
+                if buf.max() <= 1.0
+                else buf.astype(np.uint8)
+            )
+        return buf
+
+    buf_a = to_uint8(video_buffer)
+    buf_b = to_uint8(Target_Video)
+
+    # Styling settings
+    font = cv2.FONT_HERSHEY_DUPLEX
+    scale = 0.42  # Slightly smaller to accommodate the third line
+    thick = 1
+    line_type = cv2.LINE_AA
+
+    for i in range(16):
+        frame_l_rgb = np.ascontiguousarray(buf_a[i])
+        frame_r_rgb = np.ascontiguousarray(buf_b[i])
+
+        # Convert to BGR for OpenCV
+        bgr_l = cv2.cvtColor(frame_l_rgb, cv2.COLOR_RGB2BGR)
+        bgr_r = cv2.cvtColor(frame_r_rgb, cv2.COLOR_RGB2BGR)
+
+        # 1. THE BORDER ASSEMBLY
+        border_width = 4
+        spacer = np.full((video_height, border_width, 3), 50, dtype=np.uint8)
+        canvas = np.hstack((bgr_l, spacer, bgr_r))
+
+        # 2. THE TEXT OVERLAYS
+        # Left Side Labels
+        labels_l = [
+            (f"Episode: {episode}", 22),
+            (f"Step: {step}", 42),
+            (f"Latent MSE: {mse:.4f}", 62),
+        ]
+
+        # Right Side Label
+        label_target = "Target Pose"
+        x_right = bgr_l.shape[1] + border_width + 10
+        target_color = (0, 215, 255)  # Gold/Yellow in BGR
+
+        # DRAW LEFT LABELS
+        for text, y_pos in labels_l:
+            cv2.putText(
+                canvas, text, (10, y_pos), font, scale, (0, 0, 0), thick + 2, line_type
+            )
+            cv2.putText(
+                canvas,
+                text,
+                (10, y_pos),
+                font,
+                scale,
+                (255, 255, 255),
+                thick,
+                line_type,
+            )
+
+        # DRAW RIGHT LABEL
+        cv2.putText(
+            canvas,
+            label_target,
+            (x_right, 22),
+            font,
+            scale,
+            (0, 0, 0),
+            thick + 2,
+            line_type,
+        )
+        cv2.putText(
+            canvas,
+            label_target,
+            (x_right, 22),
+            font,
+            scale,
+            target_color,
+            thick,
+            line_type,
+        )
+
+        out.write(canvas)
+
+    out.release()
+    print(f"🎬 Enhanced Video saved: {filepath}")
 
 
 def Apply128kgMasses(humanoid_id):
@@ -434,6 +563,21 @@ class HumanStandEnv(gymnasium.Env):
         return obs, reward, done, truncated, info
 
     def _get_reward(self, action, video_buffer):
+        done = False
+
+        # Check if robot too far away...
+        # 1. Get the robot's current physical state
+        base_pos, _ = p.getBasePositionAndOrientation(self.humanoid_id)
+        distance_from_origin = np.linalg.norm(
+            np.array(base_pos[:2])
+        )  # Euclidean distance (X, Y)
+
+        # 2. Hard Termination if the robot escapes the 1m radius
+        if distance_from_origin > 1.0:
+            done = True
+            print(
+                f"⚠️ Episode Terminated: Robot drifted {distance_from_origin:.2f}m from origin."
+            )
         # D. ACTION PENALTY (New)
         action_diff = action - self.last_action
         action_rate_cost = np.sum(np.square(action_diff)) * -0.1
@@ -447,6 +591,8 @@ class HumanStandEnv(gymnasium.Env):
 
         # Perceptual Distance (Reward is negative MSE)
         mse_dist = F.mse_loss(TARGET_LATENT, current_latent).item()
+        mse_dist = my_jepa_model.compute_mse(current_latent, TARGET_LATENT)
+
         vjepa_reward = -mse_dist
 
         total_reward = vjepa_reward  # + action_rate_cost
@@ -456,8 +602,14 @@ class HumanStandEnv(gymnasium.Env):
         #         video_buffer, mse_dist, self.episode_count, folder=self.video_dir
         #     )
 
+        assert Target_Video is not None
         save_labeled_video(
-            video_buffer, mse_dist, self.episode_count, folder=self.video_dir
+            video_buffer,
+            Target_Video,
+            mse_dist,
+            self.episode_count,
+            self.steps_count,
+            folder=self.video_dir,
         )
 
         decomp = {
@@ -466,7 +618,7 @@ class HumanStandEnv(gymnasium.Env):
             "z_TOTAL": total_reward,
         }
 
-        return total_reward, False, decomp  # done is false...
+        return total_reward, done, decomp  # done is false...
 
     def _get_obs(self):
         joint_obs = []

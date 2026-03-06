@@ -71,6 +71,7 @@ TEST_POSES = {
     "Knee Tuck": "poses/knee_tuck.jpg",
     "Plank": "poses/plank_pose.jpg",
     "Starting Line (Lying Down)": "poses/lying_pose.jpg",
+    "No ROBOT": "poses/no_robot.jpg",
 }
 
 # ==============================================================================
