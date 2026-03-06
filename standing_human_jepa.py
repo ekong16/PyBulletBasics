@@ -527,10 +527,10 @@ class HumanStandEnv(gymnasium.Env):
         current_latent = my_jepa_model.get_latent(video_buffer, verbose=JEPA_VERBOSE)
 
         # Perceptual Distance (Reward is negative MSE)
-        mse_dist = F.mse_loss(TARGET_LATENT, current_latent).item()
+        # mse_dist = F.mse_loss(TARGET_LATENT, current_latent).item()
         mse_dist = my_jepa_model.compute_mse(current_latent, TARGET_LATENT)
 
-        vjepa_reward = -mse_dist
+        vjepa_reward = math.exp(-mse_dist)
 
         total_reward = vjepa_reward  # + action_rate_cost
 
