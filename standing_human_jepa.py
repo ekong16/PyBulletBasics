@@ -1,3 +1,6 @@
+import os
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import pybullet as p
 import pybullet_data
 import gymnasium
@@ -12,10 +15,8 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
 import torch as th
-import os
 import cv2
 
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import torch.nn.functional as F
 from transformers import AutoVideoProcessor, AutoModel
 from PIL import Image
@@ -129,70 +130,6 @@ class RewardLoggerCallback(BaseCallback):
                 for key, value in info["decomposition"].items():
                     self.logger.record(f"reward/{key}", value)
         return True
-
-
-def save_labeled_video_OLD(
-    video_buffer, Target_Video, mse, episode, folder="recordings"
-):
-    """
-    Saves the 16-frame buffer to disk with the MSE burned into the corner.
-    """
-    assert video_buffer is not None
-    assert Target_Video is not None
-    os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, f"ep_{episode:03d}_mse_{mse:.4f}.mp4")
-
-    # Define the codec and create VideoWriter object (H.264)
-    # 256x256 is your current resolution
-    fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    out = cv2.VideoWriter(filepath, fourcc, 8.0, (512, 256))
-
-    def to_uint8(buf):
-        if buf.dtype != np.uint8:
-            return (
-                (buf * 255).astype(np.uint8)
-                if buf.max() <= 1.0
-                else buf.astype(np.uint8)
-            )
-        return buf
-
-    buf_a = to_uint8(video_buffer)
-    buf_b = to_uint8(Target_Video)
-
-    for i in range(16):
-        # 1. Grab frames and ensure they are contiguous for C++
-        frame_l = np.ascontiguousarray(buf_a[i])
-        frame_r = np.ascontiguousarray(buf_b[i])
-
-        # 2. Convert both from RGB to BGR for OpenCV
-        bgr_l = cv2.cvtColor(frame_l, cv2.COLOR_RGB2BGR)
-        bgr_r = cv2.cvtColor(frame_r, cv2.COLOR_RGB2BGR)
-
-        # 3. Horizontal Stack (RL Result on Left, Target on Right)
-        canvas = np.hstack((bgr_l, bgr_r))
-
-        # 4. Burn-in Info (Top Left of the left frame)
-        label_top = "6x Slow Motion (8 FPS)"
-        label_bot = f"Ep: {episode} | MSE: {mse:.4f}"
-
-        # Smooth, high-contrast text settings
-        font, scale, thick, line = cv2.FONT_HERSHEY_DUPLEX, 0.45, 1, cv2.LINE_AA
-
-        for text, pos in [(label_top, (10, 25)), (label_bot, (10, 50))]:
-            # Outline for legibility
-            cv2.putText(canvas, text, pos, font, scale, (0, 0, 0), thick + 2, line)
-            # Main white text
-            cv2.putText(canvas, text, pos, font, scale, (255, 255, 255), thick, line)
-
-        out.write(canvas)
-
-    out.release()
-    print(f"🎬 Video saved to {filepath}")
-
-
-import cv2
-import numpy as np
-import os
 
 
 def save_labeled_video(
