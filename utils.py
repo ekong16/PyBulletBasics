@@ -171,8 +171,9 @@ class PyBulletCamera:
 
 
 class PyBulletSim:
-    def __init__(self, gui=True):
+    def __init__(self, gui=True, disableRender=False):
         self.gui = gui
+        self.disableRender = disableRender
 
     def __enter__(self):
         # Disconnect any leftover session
@@ -180,7 +181,8 @@ class PyBulletSim:
             p.disconnect()
         # Start a new connection
         self.client = p.connect(p.GUI if self.gui else p.DIRECT)
-        enable_headless_opengl(self.client)
+        if self.gui and self.disableRender:
+            p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, -9.8)
         return self.client

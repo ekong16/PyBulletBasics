@@ -415,7 +415,7 @@ class HumanStandEnv(gymnasium.Env):
         self.humanoid_id = humanoid_id
         self.plane_id = plane_id
         self.video_dir = video_dir
-        self.max_steps = 18  # Increased slightly to allow for stability testing
+        self.max_steps = 9  # Increased slightly to allow for stability testing
         self.steps_count = 0
         self.episode_count = 0
         self.camera = utils.PyBulletCamera()  # Your existing utility
@@ -689,11 +689,11 @@ class HumanStandEnv(gymnasium.Env):
 # MAIN EXECUTION
 # ==========================================
 if __name__ == "__main__":
-    with utils.PyBulletSim(gui=True) as client:
+    with utils.PyBulletSim(gui=True, disableRender=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 288
-        RUN_NAME = "V1_Run1_TEST"
+        TOTAL_TIMESTEPS = 90
+        RUN_NAME = "V1_Run3_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
@@ -708,7 +708,7 @@ if __name__ == "__main__":
         # Define the policy architecture
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
-            net_arch=dict(pi=[256, 256], vf=[256, 256]),
+            net_arch=dict(pi=[64, 64], vf=[64, 64]),
             log_std_init=-2.0,
         )
         model = PPO(
@@ -720,9 +720,9 @@ if __name__ == "__main__":
             verbose=1,
             learning_rate=linear_schedule(5.0e-5, min_value=0),
             # learning_rate=5.0e-5,
-            n_steps=18,  # buffer of training data
-            batch_size=18,  # Batch size passed at once to NN
-            n_epochs=5,  # number of times entire buffer passed to NN
+            n_steps=9,  # buffer of training data
+            batch_size=9,  # Batch size passed at once to NN
+            n_epochs=2,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
