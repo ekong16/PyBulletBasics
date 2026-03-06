@@ -693,7 +693,7 @@ if __name__ == "__main__":
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
         TOTAL_TIMESTEPS = 90
-        RUN_NAME = "V1_Run3_TEST"
+        RUN_NAME = "V1_Run4_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
@@ -708,7 +708,7 @@ if __name__ == "__main__":
         # Define the policy architecture
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
-            net_arch=dict(pi=[64, 64], vf=[64, 64]),
+            net_arch=dict(pi=[128, 128], vf=[128, 128]),
             log_std_init=-2.0,
         )
         model = PPO(
@@ -718,11 +718,11 @@ if __name__ == "__main__":
             use_sde=True,  # <--- Stops the flailing
             sde_sample_freq=4,  # smooths noise every 4 steps
             verbose=1,
-            learning_rate=linear_schedule(5.0e-5, min_value=0),
-            # learning_rate=5.0e-5,
+            # learning_rate=linear_schedule(5.0e-5, min_value=0),
+            learning_rate=5.0e-5,
             n_steps=9,  # buffer of training data
             batch_size=9,  # Batch size passed at once to NN
-            n_epochs=2,  # number of times entire buffer passed to NN
+            n_epochs=3,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
