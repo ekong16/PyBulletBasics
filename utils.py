@@ -3,7 +3,6 @@ import time
 import pybullet_data
 import numpy as np
 from tabulate import tabulate
-import random
 import math
 import pkgutil
 
@@ -12,13 +11,11 @@ from PIL import Image
 import os
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 import torch
 import torch.nn.functional as F
 from transformers import AutoVideoProcessor, AutoModel
-from PIL import Image
-import numpy as np
-import multiprocessing
 
 # Global cache to prevent redundant loading across scripts
 _JEPA_CACHE = {"model": None, "processor": None}
@@ -47,7 +44,7 @@ def enable_headless_opengl(client_id):
 
 
 class JEPAEngine:
-    def __init__(self, model_id="facebook/vjepa2-vitl-fpc16-256-ssv2", device="cpu"):
+    def __init__(self, model_id="facebook/vjepa2-vitl-fpc16-256-ssv2", device="mps"):
         self.device = device
 
         # Hardware Overclock: Only set if not already configured ... not use it for now
@@ -74,6 +71,7 @@ class JEPAEngine:
         t0_cpu = time.process_time()
 
         inputs = self.processor(video_frames, return_tensors="pt")
+        inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
         with torch.no_grad():
             outputs = self.model(**inputs)

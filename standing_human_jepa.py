@@ -1,6 +1,5 @@
 import os
 
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import pybullet as p
 import pybullet_data
 import gymnasium
@@ -16,9 +15,6 @@ from stable_baselines3.common.callbacks import BaseCallback
 from typing import Callable
 import torch as th
 import cv2
-
-import torch.nn.functional as F
-from transformers import AutoVideoProcessor, AutoModel
 from PIL import Image
 
 # ==========================================
@@ -630,12 +626,13 @@ if __name__ == "__main__":
     with utils.PyBulletSim(gui=True, disableRender=True) as client:
         humanoid_id, plane_id = utils.setup_humanoid_scene(p)
 
-        TOTAL_TIMESTEPS = 540
-        RUN_NAME = "V1_Run9_TEST"
+        TOTAL_TIMESTEPS = 1080
+        RUN_NAME = "V1_Run13_TEST"
         VIDEO_DIR = "videos/" + RUN_NAME
         env = HumanStandEnv(humanoid_id, plane_id, VIDEO_DIR)
         env = Monitor(env)
         env = DummyVecEnv([lambda: env])
+        env = VecFrameStack(env, n_stack=2)
         env = VecNormalize(env, norm_obs=True, norm_reward=True, clip_reward=5.0)
 
         utils.print_joint_info(humanoid_id)
@@ -647,24 +644,24 @@ if __name__ == "__main__":
         policy_kwargs = dict(
             activation_fn=th.nn.Tanh,
             net_arch=dict(pi=[128, 128], vf=[128, 128]),
-            log_std_init=-2.0,
+            log_std_init=-1.0,
         )
         model = PPO(
             "MlpPolicy",
             env,
             policy_kwargs=policy_kwargs,
             use_sde=True,  # <--- Stops the flailing
-            sde_sample_freq=4,  # smooths noise every 4 steps
+            sde_sample_freq=-1,  # smooths noise every 4 steps
             verbose=1,
             # learning_rate=linear_schedule(5.0e-5, min_value=0),
             learning_rate=3.0e-4,
-            n_steps=18,  # buffer of training data
-            batch_size=18,  # Batch size passed at once to NN
+            n_steps=90,  # buffer of training data
+            batch_size=30,  # Batch size passed at once to NN
             n_epochs=10,  # number of times entire buffer passed to NN
             gamma=0.995,
             gae_lambda=0.95,
             clip_range=0.2,
-            ent_coef=0.001,
+            ent_coef=0.01,
             vf_coef=0.5,
             max_grad_norm=0.5,
             tensorboard_log="./logs/",

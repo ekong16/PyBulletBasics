@@ -2,7 +2,7 @@ import time
 import pybullet as p
 import numpy as np
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize, VecFrameStack
 import utils
 
 # 1. Import the original environment from your training script
@@ -42,12 +42,12 @@ if __name__ == "__main__":
         env = HumanStandEvalEnv(humanoid_id, plane_id, video_dir="dummy")
 
         # 3. Wrap exactly as you did in training (Notice: No FrameStack anymore!)
-        env_single = DummyVecEnv([lambda: env])
+        env = DummyVecEnv([lambda: env])
+
+        env = VecFrameStack(env, n_stack=2)
 
         # Load the normalization stats (CRITICAL for the 102-vector to make sense)
-        env_normalized = VecNormalize.load(
-            "jepa_humanoid_vecnormalize.pkl", venv=env_single
-        )
+        env_normalized = VecNormalize.load("jepa_humanoid_vecnormalize.pkl", venv=env)
 
         # Freeze the normalization so it doesn't update during evaluation
         env_normalized.training = False

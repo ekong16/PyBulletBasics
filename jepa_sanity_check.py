@@ -1,13 +1,6 @@
 import os
-import time
-
-os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-import torch
-import torch.nn.functional as F
-from transformers import AutoVideoProcessor, AutoModel
 from PIL import Image
 import numpy as np
-import multiprocessing
 from utils import JEPAEngine
 
 # Force PyTorch to use ALL available CPU cores
@@ -103,7 +96,7 @@ for pose_name, filepath in TEST_POSES.items():
     current_grid = my_jepa_model.get_latent(video_clip, verbose=True)
 
     if current_grid is not None:
-        mse_dist = F.mse_loss(target_grid, current_grid).item()
+        mse_dist = my_jepa_model.compute_mse(target_grid, current_grid)
         results[pose_name] = mse_dist
 
 sorted_results = sorted(results.items(), key=lambda item: item[1])
