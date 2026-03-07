@@ -1,0 +1,27 @@
+run 1
+
+Epoch 000 | Loss: 1.61621 | Base: 1.60540 | Progress: -0.7% | Avg Epoch: 38.13s | Total: 00:00:38
+Epoch 005 | Loss: 1.42654 | Base: 1.60540 | Progress: 11.1% | Avg Epoch: 37.00s | Total: 00:03:42
+Epoch 010 | Loss: 1.38985 | Base: 1.60540 | Progress: 13.4% | Avg Epoch: 36.85s | Total: 00:06:45
+Epoch 015 | Loss: 1.36838 | Base: 1.60540 | Progress: 14.8% | Avg Epoch: 37.27s | Total: 00:09:56
+Epoch 020 | Loss: 1.35418 | Base: 1.60540 | Progress: 15.6% | Avg Epoch: 37.80s | Total: 00:13:13
+Epoch 025 | Loss: 1.34252 | Base: 1.60540 | Progress: 16.4% | Avg Epoch: 38.13s | Total: 00:16:31
+Epoch 030 | Loss: 1.33253 | Base: 1.60540 | Progress: 17.0% | Avg Epoch: 38.32s | Total: 00:19:47
+Epoch 035 | Loss: 1.32508 | Base: 1.60540 | Progress: 17.5% | Avg Epoch: 38.37s | Total: 00:23:01
+Epoch 040 | Loss: 1.31772 | Base: 1.60540 | Progress: 17.9% | Avg Epoch: 38.48s | Total: 00:26:17
+
+run 2 -- Add normalization layer...
+🚀 Training on 266 transitions using mps...
+Epoch 000 | Loss: 1.58200 | Base: 1.60540 | Progress: 1.5% | Avg Epoch: 39.75s | Total: 00:00:39
+Epoch 005 | Loss: 1.43338 | Base: 1.60540 | Progress: 10.7% | Avg Epoch: 39.09s | Total: 00:03:54
+Epoch 010 | Loss: 1.39916 | Base: 1.60540 | Progress: 12.8% | Avg Epoch: 39.12s | Total: 00:07:10
+Epoch 015 | Loss: 1.37750 | Base: 1.60540 | Progress: 14.2% | Avg Epoch: 38.75s | Total: 00:10:19
+Epoch 020 | Loss: 1.36039 | Base: 1.60540 | Progress: 15.3% | Avg Epoch: 38.27s | Total: 00:13:23
+Epoch 025 | Loss: 1.34719 | Base: 1.60540 | Progress: 16.1% | Avg Epoch: 38.14s | Total: 00:16:31
+Epoch 030 | Loss: 1.33580 | Base: 1.60540 | Progress: 16.8% | Avg Epoch: 38.25s | Total: 00:19:45
+Epoch 035 | Loss: 1.32558 | Base: 1.60540 | Progress: 17.4% | Avg Epoch: 38.23s | Total: 00:22:56
+Epoch 040 | Loss: 1.31714 | Base: 1.60540 | Progress: 18.0% | Avg Epoch: 38.07s | Total: 00:26:00
+Epoch 045 | Loss: 1.30937 | Base: 1.60540 | Progress: 18.4% | Avg Epoch: 37.99s | Total: 00:29:07
+Epoch 050 | Loss: 1.30246 | Base: 1.60540 | Progress: 18.9% | Avg Epoch: 37.93s | Total: 00:32:14
+Epoch 055 | Loss: 1.29522 | Base: 1.60540 | Progress: 19.3% | Avg Epoch: 37.84s | Total: 00:35:19
+

@@ -86,11 +86,27 @@ def resetJointMotorsAndState(humanoid_id, target_pos, target_orn):
 def save_debug_mp4(video_0, action, video_1, episode, step, folder):
     """Saves a side-by-side MP4 of the Before and After states for visual auditing."""
     os.makedirs(folder, exist_ok=True)
-    filepath = os.path.join(folder, f"debug_ep{episode:03d}_step{step}.mp4")
+    # Renamed to perfectly match the .pt file in the same folder
+    filepath = os.path.join(folder, f"transition_{step:03d}_debug.mp4")
 
     fourcc = cv2.VideoWriter_fourcc(*"avc1")
-    # Assuming camera returns 256x256. (Left + border + Right) = 516
+    # Dimensions: 256 (Left) + 4 (Border) + 256 (Right) = 516 Width
     out = cv2.VideoWriter(filepath, fourcc, 8.0, (516, 256))
+
+    # --- ACTION SUMMARY ---
+    # Summarize the 28-dim array so it doesn't clutter the screen
+    act_norm = np.linalg.norm(action)
+    act_max = np.max(np.abs(action))
+    action_text = f"Action Norm: {act_norm:.2f} | Max: {act_max:.2f}"
+
+    # --- TEXT RENDERER ---
+    def draw_text(img, text, pos, color=(255, 255, 255), scale=0.45):
+        """Draws high-contrast text with a thick black outline."""
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        # 1. Thick Black Outline
+        cv2.putText(img, text, pos, font, scale, (0, 0, 0), 3, cv2.LINE_AA)
+        # 2. Bright Inner Text
+        cv2.putText(img, text, pos, font, scale, color, 1, cv2.LINE_AA)
 
     for i in range(16):
         # video_0 and video_1 are already in (H, W, C) format natively now!
@@ -103,24 +119,19 @@ def save_debug_mp4(video_0, action, video_1, episode, step, folder):
         spacer = np.full((256, 4, 3), 50, dtype=np.uint8)
         canvas = np.hstack((bgr_l, spacer, bgr_r))
 
-        cv2.putText(
-            canvas,
-            "State 0 (Before)",
-            (10, 22),
-            cv2.FONT_HERSHEY_DUPLEX,
-            0.4,
-            (255, 255, 255),
-            1,
+        # --- APPLY HUD TEXT ---
+        # Top Left: State 0
+        draw_text(canvas, "State 0 (Before)", (10, 22), color=(255, 255, 255))
+        # Bottom Left: The Action Summary (in a bright green for visibility)
+        draw_text(canvas, action_text, (10, 245), color=(100, 255, 100))
+
+        # Top Right: State 1 & Step Counter
+        draw_text(
+            canvas, f"State 1 (After) | Step: {step}", (266, 22), color=(0, 215, 255)
         )
-        cv2.putText(
-            canvas,
-            "State 1 (After)",
-            (266, 22),
-            cv2.FONT_HERSHEY_DUPLEX,
-            0.4,
-            (0, 215, 255),
-            1,
-        )
+        # Bottom Right: Episode Counter
+        draw_text(canvas, f"Episode: {episode:03d}", (266, 245), color=(255, 255, 255))
+
         out.write(canvas)
 
     out.release()
@@ -238,6 +249,17 @@ if __name__ == "__main__":
 
             # --- THE CONTINUOUS CHAIN ---
             for step in range(CHAIN_LENGTH):
+                # ---> THE 1.2m LEASH <---
+                base_pos, _ = p.getBasePositionAndOrientation(humanoid_id)
+                # Calculate Euclidean distance on the X-Y plane
+                drift_dist = math.hypot(base_pos[0], base_pos[1])
+
+                if drift_dist > 1.2:
+                    print(
+                        f"⚠️ Robot drifted {drift_dist:.2f}m. Terminating chain {ep:05d} early."
+                    )
+                    break  # Exits the CHAIN_LENGTH loop, moves to next episode
+
                 # 1. Generate Random Exploration Action
                 # Using uniform [-1, 1] - PyBullet damping handles the rest
                 random_action = np.random.uniform(
@@ -271,4 +293,4 @@ if __name__ == "__main__":
                 # 6. Shift the chain
                 current_state_video = next_state_video
 
-            print(f"✅ Episode {ep:05d} complete. Saved {CHAIN_LENGTH} transitions.")
+            print(f"✅ Episode {ep:05d} complete. Saved {step} transitions.")
