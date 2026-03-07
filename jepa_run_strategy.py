@@ -44,6 +44,7 @@ def save_trial_mp4(
 
         # Action Summary
         act_max = np.max(np.abs(action))
+        act_norm = np.linalg.norm(action)
 
         for frame_idx in range(16):
             frame = step_video[frame_idx]
@@ -52,12 +53,17 @@ def save_trial_mp4(
             # --- HUD OVERLAY ---
             draw_text(
                 bgr,
-                f"TRIAL: {trial_idx:02d} | STEP: {step_idx + 1}/6",
+                f"TRIAL: {trial_idx:02d} | STEP: {step_idx + 1}/6 | FPS: 8.0",
                 (10, 20),
                 (0, 215, 255),
             )
             draw_text(bgr, f"DREAM MSE: {mse_val:.4f}", (10, 40), (100, 255, 100))
-            draw_text(bgr, f"MAX TORQUE: {act_max:.2f}", (10, 240), (255, 255, 255))
+            draw_text(
+                bgr,
+                f"MAX ACT.: {act_max:.2f} | ACT. NORM: {act_norm:.2f}",
+                (10, 240),
+                (255, 255, 255),
+            )
 
             out.write(bgr)
 
@@ -99,10 +105,7 @@ if __name__ == "__main__":
                 step_video = collector.execute_and_record(action)
                 trial_video_frames.append(step_video)
 
-                time.sleep(0.05)
-
             save_trial_mp4(trial_video_frames, trial_actions, trial_mse, trial_idx + 1)
-            time.sleep(1)
 
             print(f"Trial {trial_idx + 1} finished. Resetting in 2 seconds...")
             time.sleep(2)

@@ -97,7 +97,7 @@ def save_debug_mp4(video_0, action, video_1, episode, step, folder):
     # Summarize the 28-dim array so it doesn't clutter the screen
     act_norm = np.linalg.norm(action)
     act_max = np.max(np.abs(action))
-    action_text = f"Action Norm: {act_norm:.2f} | Max: {act_max:.2f}"
+    action_text = f"Action Norm: {act_norm:.2f} | Max Action: {act_max:.2f} | FPS: 8.0"
 
     # --- TEXT RENDERER ---
     def draw_text(img, text, pos, color=(255, 255, 255), scale=0.45):

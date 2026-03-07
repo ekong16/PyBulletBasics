@@ -4,6 +4,7 @@ from jepa_predictor import WorldPredictorPro
 
 import os
 import torch
+from torch.distributions import Uniform
 import numpy as np
 import time
 from PIL import Image
@@ -44,9 +45,10 @@ def generate_dream_sequence(
     )
     z_goal = z_goal.to(device)
 
+    action_dist = Uniform(low=-1.0, high=1.0)
     for step in range(horizon):
         start_time = time.time()
-        all_actions = torch.randn((num_samples, 28), device=device)
+        all_actions = action_dist.sample((num_samples, 28)).to(DEVICE)
         all_preds = []
 
         print(f"Step {step + 1} | Processing {num_samples} samples 1-by-1...")
@@ -125,5 +127,5 @@ if __name__ == "__main__":
     model = WorldPredictorPro().to(DEVICE)
     model.load_state_dict(torch.load("world_model_final.pth"))
     get_multi_trial_sequence_to_disk(
-        model, START_LATENT, TARGET_LATENT, num_trials=2, num_samples=10, horizon=6
+        model, START_LATENT, TARGET_LATENT, num_trials=10, num_samples=100, horizon=6
     )
