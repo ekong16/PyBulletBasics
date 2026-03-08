@@ -280,15 +280,16 @@ if __name__ == "__main__":
                 save_path = os.path.join(ep_dir, f"transition_{step:03d}.pt")
                 torch.save(transition_data, save_path)
 
-                # 5. Sanity Check Video (Only for Episode 0)
-                save_debug_mp4(
-                    current_state_video,
-                    random_action,
-                    next_state_video,
-                    ep,
-                    step,
-                    folder=ep_dir,
-                )
+                # 5. Sanity Check Video
+                if ep % 10 == 0:
+                    save_debug_mp4(
+                        current_state_video,
+                        random_action,
+                        next_state_video,
+                        ep,
+                        step,
+                        folder=ep_dir,
+                    )
 
                 # 6. Shift the chain
                 current_state_video = next_state_video

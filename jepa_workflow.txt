@@ -1,0 +1,5 @@
+1. Generate Data
+python jepa_data_farm.py 
+
+2. Get Latents 
+python encode_latents.py
