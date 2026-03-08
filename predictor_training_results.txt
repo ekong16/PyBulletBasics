@@ -25,3 +25,21 @@ Epoch 045 | Loss: 1.30937 | Base: 1.60540 | Progress: 18.4% | Avg Epoch: 37.99s 
 Epoch 050 | Loss: 1.30246 | Base: 1.60540 | Progress: 18.9% | Avg Epoch: 37.93s | Total: 00:32:14
 Epoch 055 | Loss: 1.29522 | Base: 1.60540 | Progress: 19.3% | Avg Epoch: 37.84s | Total: 00:35:19
 
+Run 3 -- More Data ... Stalled training ... not very good results ... 
+🚀 Training on 4159 transitions using mps...
+Epoch 000 | Loss: 1.42529 | Base: 1.58971 | Progress: 10.3% | Avg Epoch: 623.33s | Total: 00:10:23
+Epoch 005 | Loss: 1.30780 | Base: 1.58974 | Progress: 17.7% | Avg Epoch: 601.19s | Total: 01:00:07
+Epoch 010 | Loss: 1.28882 | Base: 1.58972 | Progress: 18.9% | Avg Epoch: 595.25s | Total: 01:49:07
+Epoch 015 | Loss: 1.27845 | Base: 1.58975 | Progress: 19.6% | Avg Epoch: 592.85s | Total: 02:38:05
+Epoch 020 | Loss: 1.27145 | Base: 1.58971 | Progress: 20.0% | Avg Epoch: 591.58s | Total: 03:27:03
+Epoch 025 | Loss: 1.26658 | Base: 1.58971 | Progress: 20.3% | Avg Epoch: 590.78s | Total: 04:16:00
+Epoch 030 | Loss: 1.26257 | Base: 1.58975 | Progress: 20.6% | Avg Epoch: 590.25s | Total: 05:04:57
+Epoch 035 | Loss: 1.25971 | Base: 1.58972 | Progress: 20.8% | Avg Epoch: 589.93s | Total: 05:53:57
+Epoch 040 | Loss: 1.25695 | Base: 1.58972 | Progress: 20.9% | Avg Epoch: 589.77s | Total: 06:43:00
+Epoch 045 | Loss: 1.25451 | Base: 1.58964 | Progress: 21.1% | Avg Epoch: 589.66s | Total: 07:32:04
+Epoch 050 | Loss: 1.25276 | Base: 1.58972 | Progress: 21.2% | Avg Epoch: 589.53s | Total: 08:21:06
+Epoch 055 | Loss: 1.25106 | Base: 1.58968 | Progress: 21.3% | Avg Epoch: 589.48s | Total: 09:10:10
+Epoch 060 | Loss: 1.24945 | Base: 1.58968 | Progress: 21.4% | Avg Epoch: 589.49s | Total: 09:59:18
+Epoch 065 | Loss: 1.24832 | Base: 1.58968 | Progress: 21.5% | Avg Epoch: 589.48s | Total: 10:48:25
+Epoch 070 | Loss: 1.24720 | Base: 1.58971 | Progress: 21.5% | Avg Epoch: 589.77s | Total: 11:37:53
+

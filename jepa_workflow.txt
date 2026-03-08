@@ -3,3 +3,8 @@ python jepa_data_farm.py
 
 2. Get Latents 
 python encode_latents.py
+
+3. Train predictor 
+python jepa_predictor.py 
+
+Paste result in the predictor_training results.txt

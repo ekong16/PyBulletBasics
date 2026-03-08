@@ -12,7 +12,7 @@ import time
 # --- 1. CONFIGURATION ---
 LATENT_DIR = "world_model_latents"
 BATCH_SIZE = 2  # [B] - Keep small to spare your RAM
-EPOCHS = 800
+EPOCHS = 100
 LR = 2e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
@@ -109,7 +109,10 @@ class WorldPredictorPro(nn.Module):
         act_token = self.action_encoder(action).unsqueeze(1)
 
         # 3. Combine: [B, 1, 256] + [B, 2048, 256] -> [B, 2049, 256]
-        combined = torch.cat([act_token, x], dim=1)
+        # combined = torch.cat([act_token, x], dim=1)
+
+        # action broadcast to all tokens [B, 2048, 256] + [B, 1, 256] -> [B, 2048, 256]
+        combined = x + act_token
 
         # 4. Fast Transformer Processing (Now doing 16x less math)
         # -> [B, 2049, 256]

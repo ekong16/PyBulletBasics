@@ -1,0 +1,14 @@
+3. The Receipts: Sources for Best Practices
+You absolutely should not take my word for it. Here are the foundational papers that established these exact techniques:
+
+Positional Embeddings via Addition:
+
+Source: "Attention Is All You Need" (Vaswani et al., 2017).
+
+The Proof: Section 3.5 explicitly states: "We add the positional encodings to the input embeddings at the bottoms of the encoder and decoder stacks." They proved addition is functionally identical to concatenation, but computationally cheaper.
+
+Global Conditioning (Action Broadcasting) via Addition/Modulation:
+
+Source: "FiLM: Visual Reasoning with a General Conditioning Layer" (Perez et al., 2018). This proved that applying a global condition (like an action or a question) to every spatial feature simultaneously via affine transformations (addition/multiplication) dominates concatenation.
+
+Modern Source: "Scalable Diffusion Models with Transformers" (DiT) (Peebles & Xie, 2022). The state-of-the-art video generation models use AdaLN (Adaptive Layer Norm), which is fundamentally just broadcasting condition vectors (like text prompts or timesteps) and adding them to every image token.
