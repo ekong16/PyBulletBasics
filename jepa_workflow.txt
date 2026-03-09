@@ -8,3 +8,9 @@ python encode_latents.py
 python jepa_predictor.py 
 
 Paste result in the predictor_training results.txt
+
+4. Run the jepa predictor to get the strategy 
+python jepa_generate_strategy.py
+
+5. Run the strategies -- 
+python jepa_run_strategy.py

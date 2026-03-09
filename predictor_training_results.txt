@@ -43,3 +43,12 @@ Epoch 060 | Loss: 1.24945 | Base: 1.58968 | Progress: 21.4% | Avg Epoch: 589.49s
 Epoch 065 | Loss: 1.24832 | Base: 1.58968 | Progress: 21.5% | Avg Epoch: 589.48s | Total: 10:48:25
 Epoch 070 | Loss: 1.24720 | Base: 1.58971 | Progress: 21.5% | Avg Epoch: 589.77s | Total: 11:37:53
 
+Run 4 -- Action broadcasting ... still more or less the same ...
+🚀 Training on 4159 transitions using mps...
+Epoch 000 | Loss: 1.42897 | Base: 1.58968 | Progress: 10.1% | Avg Epoch: 586.23s | Total: 00:09:46
+Epoch 005 | Loss: 1.30688 | Base: 1.58971 | Progress: 17.8% | Avg Epoch: 576.97s | Total: 00:57:41
+Epoch 010 | Loss: 1.28839 | Base: 1.58967 | Progress: 19.0% | Avg Epoch: 573.06s | Total: 01:45:03
+Epoch 015 | Loss: 1.27825 | Base: 1.58976 | Progress: 19.6% | Avg Epoch: 571.30s | Total: 02:32:20
+Epoch 020 | Loss: 1.27146 | Base: 1.58968 | Progress: 20.0% | Avg Epoch: 571.06s | Total: 03:19:52
+Epoch 025 | Loss: 1.26604 | Base: 1.58966 | Progress: 20.4% | Avg Epoch: 571.15s | Total: 04:07:29
+

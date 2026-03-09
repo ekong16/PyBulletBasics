@@ -12,7 +12,7 @@ import time
 # --- 1. CONFIGURATION ---
 LATENT_DIR = "world_model_latents"
 BATCH_SIZE = 2  # [B] - Keep small to spare your RAM
-EPOCHS = 100
+EPOCHS = 30
 LR = 2e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
@@ -39,7 +39,7 @@ class JEPADataset(Dataset):
 
 # --- 3. THE WORLD PREDICTOR ---
 class WorldPredictorPro(nn.Module):
-    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=256):
+    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=512):
         super().__init__()
 
         # 1. THE INTERNAL GUARD (Normalization)
@@ -121,7 +121,7 @@ class WorldPredictorPro(nn.Module):
         # 5. Extract Video, DECOMPRESS, and Add to Original
         # Extract: [B, 2048, 256]
         # Decompress: -> [B, 2048, 1024]
-        delta = self.output_head(out[:, 1:, :])
+        delta = self.output_head(out[:, :, :])
 
         # Return the final full-size prediction
         return z0 + delta
