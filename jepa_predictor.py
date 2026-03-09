@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
@@ -137,6 +138,9 @@ def train():
         model, input_size=[(BATCH_SIZE, 2048, 1024), (BATCH_SIZE, 28)], device=DEVICE
     )
     optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer, T_max=EPOCHS, eta_min=1e-5
+    )
     criterion = nn.L1Loss()
 
     start_training_time = time.time()  # Start the "Total Elapsed" clock
@@ -160,8 +164,11 @@ def train():
             total_loss += loss.item()
             total_base += criterion(z0, z1).item()
 
+        scheduler.step()
+        current_lr = scheduler.get_last_lr()[0]
+
         # Calculation Phase
-        if ep % 5 == 0:
+        if ep % 5 == 0 or ep == (EPOCHS - 1):
             avg_loss = total_loss / len(loader)
             avg_base = total_base / len(loader)
             improvement = ((avg_base - avg_loss) / avg_base) * 100
@@ -175,10 +182,14 @@ def train():
             # Format times for readability (MM:SS)
             total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
             avg_str = f"{avg_epoch_time:.2f}s"
+            now = datetime.now()
+
+            # Format: HH:MM:SS (24-hour)
+            formatted_time = now.strftime("%H:%M:%S")
 
             print(
                 f"Epoch {ep:03d} | Loss: {avg_loss:.5f} | Base: {avg_base:.5f} | "
-                f"Progress: {improvement:.1f}% | Avg Epoch: {avg_str} | Total: {total_str}"
+                f"Progress: {improvement:.1f}% | Avg Epoch: {avg_str} | Total: {total_str} | Time: {now} | LR: {current_lr:.5f}"
             )
 
     torch.save(model.state_dict(), "world_model_final.pth")

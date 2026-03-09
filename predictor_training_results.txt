@@ -52,3 +52,20 @@ Epoch 015 | Loss: 1.27825 | Base: 1.58976 | Progress: 19.6% | Avg Epoch: 571.30s
 Epoch 020 | Loss: 1.27146 | Base: 1.58968 | Progress: 20.0% | Avg Epoch: 571.06s | Total: 03:19:52
 Epoch 025 | Loss: 1.26604 | Base: 1.58966 | Progress: 20.4% | Avg Epoch: 571.15s | Total: 04:07:29
 
+🚀 Training on 4159 transitions using mps... 512 hidden layer
+Epoch 000 | Loss: 1.39502 | Base: 1.58972 | Progress: 12.2% | Avg Epoch: 909.65s | Total: 00:15:09
+Epoch 005 | Loss: 1.25427 | Base: 1.58969 | Progress: 21.1% | Avg Epoch: 973.71s | Total: 01:37:22
+Epoch 010 | Loss: 1.22802 | Base: 1.58982 | Progress: 22.8% | Avg Epoch: 896.86s | Total: 02:44:25
+Epoch 015 | Loss: 1.21523 | Base: 1.58972 | Progress: 23.6% | Avg Epoch: 866.97s | Total: 03:51:11
+Epoch 020 | Loss: 1.20709 | Base: 1.58972 | Progress: 24.1% | Avg Epoch: 851.48s | Total: 04:58:01
+Epoch 025 | Loss: 1.20116 | Base: 1.58975 | Progress: 24.4% | Avg Epoch: 841.81s | Total: 06:04:47
+Epoch 029 | Loss: 1.19714 | Base: 1.58969 | Progress: 24.7% | Avg Epoch: 836.45s | Total: 06:58:13
+
+🚀 Training on 4159 transitions using mps... (3 transformer layers ... not much improvement, but really slow)
+Epoch 000 | Loss: 1.39926 | Base: 1.58972 | Progress: 12.0% | Avg Epoch: 1166.71s | Total: 00:19:26
+Epoch 005 | Loss: 1.24247 | Base: 1.58975 | Progress: 21.8% | Avg Epoch: 1162.30s | Total: 01:56:13
+Epoch 010 | Loss: 1.21170 | Base: 1.58974 | Progress: 23.8% | Avg Epoch: 1160.46s | Total: 03:32:45
+Epoch 015 | Loss: 1.19699 | Base: 1.58974 | Progress: 24.7% | Avg Epoch: 1163.65s | Total: 05:10:18
+
+
+
