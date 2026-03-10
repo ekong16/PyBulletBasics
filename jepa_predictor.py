@@ -13,7 +13,7 @@ import time
 # --- 1. CONFIGURATION ---
 LATENT_DIR = "world_model_latents"
 BATCH_SIZE = 2  # [B] - Keep small to spare your RAM
-EPOCHS = 30
+EPOCHS = 60
 LR = 2e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
@@ -40,9 +40,7 @@ class JEPADataset(Dataset):
 
 # --- 3. THE WORLD PREDICTOR ---
 class WorldPredictorPro(nn.Module):
-    def __init__(
-        self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=1024
-    ):
+    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=256):
         super().__init__()
 
         # 1. THE INTERNAL GUARD (Normalization)
