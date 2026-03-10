@@ -67,5 +67,23 @@ Epoch 005 | Loss: 1.24247 | Base: 1.58975 | Progress: 21.8% | Avg Epoch: 1162.30
 Epoch 010 | Loss: 1.21170 | Base: 1.58974 | Progress: 23.8% | Avg Epoch: 1160.46s | Total: 03:32:45
 Epoch 015 | Loss: 1.19699 | Base: 1.58974 | Progress: 24.7% | Avg Epoch: 1163.65s | Total: 05:10:18
 
+🚀 Training on 4159 transitions using mps... (2 layers ... cosine annealing ... its ok ...)
+Epoch 000 | Loss: 1.39553 | Base: 1.58975 | Progress: 12.2% | Avg Epoch: 827.48s | Total: 00:13:47 | Time: 2026-03-09 12:36:22.773637 | LR: 0.00020
+Epoch 005 | Loss: 1.25594 | Base: 1.58973 | Progress: 21.0% | Avg Epoch: 822.22s | Total: 01:22:13 | Time: 2026-03-09 13:44:48.609389 | LR: 0.00018
+Epoch 010 | Loss: 1.22877 | Base: 1.58976 | Progress: 22.7% | Avg Epoch: 817.66s | Total: 02:29:54 | Time: 2026-03-09 14:52:29.587849 | LR: 0.00014
+Epoch 015 | Loss: 1.21371 | Base: 1.58977 | Progress: 23.7% | Avg Epoch: 816.96s | Total: 03:37:51 | Time: 2026-03-09 16:00:26.574127 | LR: 0.00010
+Epoch 020 | Loss: 1.20365 | Base: 1.58966 | Progress: 24.3% | Avg Epoch: 819.06s | Total: 04:46:40 | Time: 2026-03-09 17:09:15.551366 | LR: 0.00005
 
+Next Run: back to action concat ... 8 heads ... lets do it ... 
+🚀 Training on 4159 transitions using mps...
+Epoch 000 | Loss: 1.39167 | Base: 1.58967 | Progress: 12.5% | Avg Epoch: 1154.18s | Total: 00:19:14 | Time: 2026-03-09 18:15:51 | LR: 0.00020
+Epoch 005 | Loss: 1.26115 | Base: 1.58976 | Progress: 20.7% | Avg Epoch: 1153.71s | Total: 01:55:22 | Time: 2026-03-09 19:51:59 | LR: 0.00018
+Epoch 010 | Loss: 1.23680 | Base: 1.58973 | Progress: 22.2% | Avg Epoch: 1220.79s | Total: 03:43:48 | Time: 2026-03-09 21:40:26 | LR: 0.00014
+
+
+Ok gonna try to increase hiddendim to 1024 ... 8 heads ... action concat ... cosine annealing ... 2 layers 
+🚀 Training on 4159 transitions using mps...
+Epoch 000 | Loss: 1.35997 | Base: 1.58968 | Progress: 14.5% | Avg Epoch: 2038.25s | Total: 00:33:58 | Time: 2026-03-09 23:10:36 | LR: 0.00020
+Epoch 005 | Loss: 1.21905 | Base: 1.58972 | Progress: 23.3% | Avg Epoch: 5440.68s | Total: 09:04:04 | Time: 2026-03-10 07:40:41 | LR: 0.00018
+....WAY TOO SLOW ... gonna go back to 512 hidden layer, action broadcast, 4 heads ... 
 

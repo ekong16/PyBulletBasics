@@ -40,7 +40,9 @@ class JEPADataset(Dataset):
 
 # --- 3. THE WORLD PREDICTOR ---
 class WorldPredictorPro(nn.Module):
-    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=512):
+    def __init__(
+        self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=1024
+    ):
         super().__init__()
 
         # 1. THE INTERNAL GUARD (Normalization)
@@ -68,7 +70,7 @@ class WorldPredictorPro(nn.Module):
         layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
             nhead=4,
-            dim_feedforward=1024,
+            dim_feedforward=hidden_dim * 4,
             dropout=0.1,
             activation="gelu",
             batch_first=True,
@@ -79,6 +81,8 @@ class WorldPredictorPro(nn.Module):
         # E. THE DECOMPRESSOR (Output Head)
         # Blows the 256-dim prediction back up to 1024 dims so it matches your V-JEPA target
         self.output_head = nn.Linear(hidden_dim, latent_dim)
+        nn.init.zeros_(self.output_head.weight)
+        nn.init.zeros_(self.output_head.bias)
 
     def _get_pos_embed(self, num_tokens, latent_dim):
         """Clean, standard PyTorch implementation of the Sin/Cos Barcodes."""
@@ -182,7 +186,7 @@ def train():
             # Format times for readability (MM:SS)
             total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
             avg_str = f"{avg_epoch_time:.2f}s"
-            now = datetime.now()
+            now = datetime.now().replace(microsecond=0)
 
             # Format: HH:MM:SS (24-hour)
             formatted_time = now.strftime("%H:%M:%S")
