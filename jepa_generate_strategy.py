@@ -147,22 +147,41 @@ def generate_dream_sequence_cem(
         for cem_iter in range(cem_iters):
             # Step A: Generate Action Guesses
             if cem_iter == 0:
-                # True Uniform Cold Start [-1, 1]
-                actions = (torch.rand(num_samples, 28, device=device) * 2.0) - 1.0
+                if step == 0:
+                    # True Uniform Cold Start [-1, 1]
+                    actions = (
+                        torch.rand(num_samples * 10, 28, device=device) * 2.0
+                    ) - 1.0
+
+                    assert actions.shape == (num_samples * 10, 28), (
+                        f"Actions shape wrong: {actions.shape}"
+                    )
+                else:
+                    inflated_std = prev_std * 5.0
+                    inflated_std = torch.clamp(inflated_std, min=0.25, max=2.0)
+
+                    actions = torch.normal(
+                        prev_mean.repeat(num_samples * 3, 1),
+                        inflated_std.repeat(num_samples * 3, 1),
+                    )
+                    actions = torch.clamp(actions, min=-1.0, max=1.0)
+                    assert actions.shape == (num_samples * 3, 28), (
+                        f"Actions shape wrong: {actions.shape}"
+                    )
             else:
                 # Gaussian Squeeze around previous winners
                 actions = torch.normal(
                     mean.repeat(num_samples, 1), std.repeat(num_samples, 1)
                 )
-                actions = torch.clamp(actions, min=-1.0, max=-1.0)  # Physical limits
+                actions = torch.clamp(actions, min=-1.0, max=1.0)  # Physical limits
 
-            assert actions.shape == (num_samples, 28), (
-                f"Actions shape wrong: {actions.shape}"
-            )
+                assert actions.shape == (num_samples, 28), (
+                    f"Actions shape wrong: {actions.shape}"
+                )
 
             # Step B: Evaluate Guesses in Chunks
             all_preds = []
-            chunk_size = 50
+            chunk_size = 10
 
             for start_idx in range(0, num_samples, chunk_size):
                 end_idx = start_idx + chunk_size
@@ -213,10 +232,25 @@ def generate_dream_sequence_cem(
             std = elites.std(dim=0) + 1e-3  # Tiny noise floor to prevent 0.0 collapse
 
             assert mean.shape == (28,), "Mean calculation failed!"
+            prev_mean = mean.clone()
+            prev_std = std.clone()
 
+            top_elite_action = elites[0].clone()
+
+            # --- THE TELEMETRY PRINTER ---
+            # Convert to CPU numpy array, then format each number to strictly take up 5 spaces: "+0.00"
+            top_elite_action_np = top_elite_action.cpu().numpy()
+            formatted_action = " ".join([f"{x:+5.2f}" for x in top_elite_action_np])
+            mean_str = " ".join([f"{x:+5.2f}" for x in mean.cpu().numpy()])
+
+            # Std Dev is strictly positive, so we drop the '+' sign to keep it clean
+            std_str = " ".join([f"{x:5.2f}" for x in std.cpu().numpy()])
             print(
                 f"  CEM Iter {cem_iter + 1}/{cem_iters} | Best L1: {best_l1_scores[0].item():.5f}"
             )
+            print(f"  ├─ Best Act: [{formatted_action}]")
+            print(f"  ├─ Dist Mean:[{mean_str}]")
+            print(f"  └─ Dist Std: [{std_str}]")
 
         # --- END CEM THINKING LOOP ---
 
@@ -224,6 +258,19 @@ def generate_dream_sequence_cem(
         # Reshape from [28] -> [1, 28] so the model can process it
         best_action = mean.unsqueeze(0)
         assert best_action.shape == (1, 28), "Final action shape wrong!"
+
+        # --- THE FINAL CHOSEN ACTION PRINTER ---
+        chosen_act_str = " ".join(
+            [f"{x:+5.2f}" for x in best_action.squeeze(0).cpu().numpy()]
+        )
+        final_std_str = " ".join([f"{x:5.2f}" for x in std.cpu().numpy()])
+
+        print(f"  ========================================")
+        print(f"  🎯 FINAL CHOSEN DIST FOR STEP {step + 1}:")
+        print(f"  ├─ Final Mean: [{chosen_act_str}]")
+        print(f"  └─ Final Std:  [{final_std_str}]")
+        print(f"  ========================================")
+        # ---------------------------------------
 
         # Get the actual predicted next state for this chosen action to carry forward
         with torch.no_grad():
@@ -252,21 +299,29 @@ def generate_dream_sequence_cem(
 
 
 def get_multi_trial_sequence_to_disk(
-    model, z_start, z_goal, num_trials=10, num_samples=1000, horizon=6, device=DEVICE
+    model,
+    z_start,
+    z_goal,
+    num_samples=100,
+    horizon=6,
+    cem_iters=5,
+    elite_frac=0.15,
+    num_trials=10,
+    device=DEVICE,
 ):
     all_sequences = []
-    all_mse = []
+    all_l1 = []
     for i in range(num_trials):
-        sequence, mse = generate_dream_sequence_cem(
-            model, z_start, z_goal, num_samples, horizon, device
+        sequence, l1_loss = generate_dream_sequence_cem(
+            model, z_start, z_goal, num_samples, horizon, cem_iters, elite_frac, device
         )
         all_sequences.append(sequence)
-        all_mse.append(mse)
+        all_l1.append(l1_loss)
 
     final_array = np.array(all_sequences)
-    final_mse_arr = np.array(all_mse)
+    final_l1_arr = np.array(all_l1)
     np.save("multi_trial_cem_strategy_actions.npy", final_array)
-    np.save("multi_trial_strategy_l1.npy", final_mse_arr)
+    np.save("multi_trial_strategy_l1.npy", final_l1_arr)
     print(f"\n✅ All {num_trials} trials saved to multi_trial_cem_strategy_actions.npy")
 
 
@@ -274,5 +329,13 @@ if __name__ == "__main__":
     model = WorldPredictorPro().to(DEVICE)
     model.load_state_dict(torch.load("world_model_final.pth"))
     get_multi_trial_sequence_to_disk(
-        model, START_LATENT, TARGET_LATENT, num_trials=10, num_samples=100, horizon=6
+        model,
+        START_LATENT,
+        TARGET_LATENT,
+        num_samples=100,
+        horizon=6,
+        cem_iters=5,
+        elite_frac=0.15,
+        num_trials=1,
+        device=DEVICE,
     )

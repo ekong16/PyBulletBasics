@@ -17,12 +17,12 @@ ROLL, PITCH, YAW = (
     utils.SimConfig.START_ORI[2],
 )
 START_ORIENTATION = p.getQuaternionFromEuler([ROLL, PITCH, YAW])
-ACTIONS_NAME = "multi_trial_strategy_actions.npy"
-MSE_NAME = "multi_trial_strategy_mse.npy"
+ACTIONS_NAME = "multi_trial_cem_strategy_actions.npy"
+L1_NAME = "multi_trial_strategy_l1.npy"
 
 
 def save_trial_mp4(
-    full_video_buffer, actions, mse_log, trial_idx, folder="eval_replays"
+    full_video_buffer, actions, loss_log, trial_idx, folder="eval_replays"
 ):
     """Stitches 6 steps into a single MP4 with telemetry HUD."""
     os.makedirs(folder, exist_ok=True)
@@ -40,7 +40,7 @@ def save_trial_mp4(
     # full_video_buffer is a list of 6 step_videos, each [16, 256, 256, 3]
     for step_idx, step_video in enumerate(full_video_buffer):
         action = actions[step_idx]
-        mse_val = mse_log[step_idx]
+        loss_val = loss_log[step_idx]
 
         # Action Summary
         act_max = np.max(np.abs(action))
@@ -57,7 +57,7 @@ def save_trial_mp4(
                 (10, 20),
                 (0, 215, 255),
             )
-            draw_text(bgr, f"DREAM MSE: {mse_val:.4f}", (10, 40), (100, 255, 100))
+            draw_text(bgr, f"DREAM L1: {loss_val:.4f}", (10, 40), (100, 255, 100))
             draw_text(
                 bgr,
                 f"MAX ACT.: {act_max:.2f} | ACT. NORM: {act_norm:.2f}",
@@ -77,9 +77,9 @@ if __name__ == "__main__":
         collector = DataCollector(humanoid_id)
 
         all_strategies = np.load(ACTIONS_NAME)
-        all_mse = np.load(MSE_NAME)
+        all_l1 = np.load(L1_NAME)
         print("all_strategies shape:", all_strategies.shape)
-        print("all_mse shape:", all_mse.shape)
+        print("all_l1 shape:", all_l1.shape)
         print(f"📂 Loaded {all_strategies.shape[0]} trials.")
 
         for trial_idx in range(all_strategies.shape[0]):
@@ -97,7 +97,7 @@ if __name__ == "__main__":
             print(f"\n🎬 EXECUTING TRIAL {trial_idx + 1}")
 
             trial_actions = all_strategies[trial_idx]  # (6, 28)
-            trial_mse = all_mse[trial_idx]
+            trial_l1 = all_l1[trial_idx]
             trial_video_frames = []
 
             for step_idx, action in enumerate(trial_actions):
@@ -105,7 +105,7 @@ if __name__ == "__main__":
                 step_video = collector.execute_and_record(action)
                 trial_video_frames.append(step_video)
 
-            save_trial_mp4(trial_video_frames, trial_actions, trial_mse, trial_idx + 1)
+            save_trial_mp4(trial_video_frames, trial_actions, trial_l1, trial_idx + 1)
 
             print(f"Trial {trial_idx + 1} finished. Resetting in 2 seconds...")
             time.sleep(2)
