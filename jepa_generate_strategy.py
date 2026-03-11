@@ -132,9 +132,6 @@ def generate_dream_sequence_cem(
     assert z_step.shape == (1, 2048, 1024), f"z_step shape wrong: {z_step.shape}"
     assert z_goal.shape == (1, 2048, 1024), f"z_goal shape wrong: {z_goal.shape}"
 
-    # Calculate Elites (e.g., 15% of 100 = 15)
-    n_elites = max(1, int(num_samples * elite_frac))
-
     for step in range(horizon):
         start_time = time.time()
         print(f"\n🚀 --- Step {step + 1}/{horizon} ---")
@@ -145,33 +142,22 @@ def generate_dream_sequence_cem(
 
         # --- CEM OPTIMIZATION LOOP ---
         for cem_iter in range(cem_iters):
+            step_samples = None
             # Step A: Generate Action Guesses
             if cem_iter == 0:
-                if step == 0:
-                    # True Uniform Cold Start [-1, 1]
-                    actions = (
-                        torch.rand(num_samples * 10, 28, device=device) * 2.0
-                    ) - 1.0
+                # True Uniform Cold Start [-1, 1]
+                step_samples = num_samples
+                actions = (torch.rand(step_samples, 28, device=device) * 2.0) - 1.0
 
-                    assert actions.shape == (num_samples * 10, 28), (
-                        f"Actions shape wrong: {actions.shape}"
-                    )
-                else:
-                    inflated_std = prev_std * 5.0
-                    inflated_std = torch.clamp(inflated_std, min=0.25, max=2.0)
+                assert actions.shape == (step_samples, 28), (
+                    f"Actions shape wrong: {actions.shape}"
+                )
 
-                    actions = torch.normal(
-                        prev_mean.repeat(num_samples * 3, 1),
-                        inflated_std.repeat(num_samples * 3, 1),
-                    )
-                    actions = torch.clamp(actions, min=-1.0, max=1.0)
-                    assert actions.shape == (num_samples * 3, 28), (
-                        f"Actions shape wrong: {actions.shape}"
-                    )
             else:
+                step_samples = num_samples
                 # Gaussian Squeeze around previous winners
                 actions = torch.normal(
-                    mean.repeat(num_samples, 1), std.repeat(num_samples, 1)
+                    mean.repeat(step_samples, 1), std.repeat(step_samples, 1)
                 )
                 actions = torch.clamp(actions, min=-1.0, max=1.0)  # Physical limits
 
@@ -179,44 +165,67 @@ def generate_dream_sequence_cem(
                     f"Actions shape wrong: {actions.shape}"
                 )
 
-            # Step B: Evaluate Guesses in Chunks
-            all_preds = []
+            # Calculate Elites
+            n_elites = max(1, int(step_samples * elite_frac))
+
+            # Step B: Evaluate Guesses in Chunks and Score IMMEDIATELY
+            all_scores = []
             chunk_size = 10
 
-            for start_idx in range(0, num_samples, chunk_size):
+            for start_idx in range(0, step_samples, chunk_size):
                 end_idx = start_idx + chunk_size
                 action_chunk = actions[start_idx:end_idx]
 
-                # Figure out how many items are actually in this chunk (usually 50)
+                # Figure out how many items are actually in this chunk (usually 10)
                 current_batch_size = action_chunk.size(0)
 
                 # Copy the current state 'current_batch_size' times so we can predict them all at once
-                # Shape goes from [1, 2048, 1024] -> [50, 2048, 1024]
                 z_step_chunk = z_step.repeat(current_batch_size, 1, 1)
 
+                # ASSERT 1: Check Input Shape
+                # Note: We check against current_batch_size, not chunk_size, to prevent crashes on the final uneven chunk
                 assert z_step_chunk.shape == (current_batch_size, 2048, 1024), (
                     "Repeat logic failed!"
+                )
+                assert z_step_chunk.shape[0] <= chunk_size, (
+                    f"Too big chunk size shape {z_step_chunk.shape[0]}"
                 )
 
                 # Predict the next frame
                 with torch.no_grad():
                     with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
                         pred_chunk = model(z_step_chunk, action_chunk)
-                        all_preds.append(pred_chunk)
 
-            # Glue the chunks back together into one massive tensor
-            # Shape: [num_samples, 2048, 1024]
-            z_next_preds = torch.cat(all_preds, dim=0)
-            assert z_next_preds.shape == (num_samples, 2048, 1024), "Cat logic failed!"
+                # ASSERT 2: Check Prediction Shape
+                assert pred_chunk.shape == (current_batch_size, 2048, 1024), (
+                    "Prediction shape wrong!"
+                )
 
-            # Step C: Calculate the Score (Mean L1 Loss)
-            # Find the absolute difference, then average across Tokens (dim 1) and Features (dim 2)
-            # This leaves us with exactly 1 score per sample in the batch.
-            l1_diffs = torch.abs(z_next_preds - z_goal)
-            l1_scores = torch.mean(l1_diffs, dim=(1, 2))
+                # --- THE MEMORY SAVER: Score Immediately ---
+                # Calculate the L1 loss for just this tiny chunk
+                chunk_l1_diffs = torch.abs(pred_chunk - z_goal)
+                chunk_l1_scores = torch.mean(chunk_l1_diffs, dim=(1, 2))
 
-            assert l1_scores.shape == (num_samples,), (
-                f"Scores shape wrong: {l1_scores.shape}"
+                # ASSERT 3: Check Chunk Score Shape
+                assert chunk_l1_scores.shape == (current_batch_size,), (
+                    f"Chunk scores shape wrong: {chunk_l1_scores.shape}"
+                )
+
+                # Save the tiny 1D array of scores (just 10 numbers)
+                all_scores.append(chunk_l1_scores)
+
+                # FORCE MAC MEMORY FLUSH
+                # We strictly delete the heavy [10, 2048, 1024] tensors so they don't pile up in memory
+                del pred_chunk, chunk_l1_diffs
+                torch.mps.empty_cache()
+
+            # Step C: Glue the tiny score chunks back together into one 1D tensor
+            # Shape: [step_samples]
+            l1_scores = torch.cat(all_scores, dim=0)
+
+            # ASSERT 4: Check Final Score Shape
+            assert l1_scores.shape == (step_samples,), (
+                f"Final scores shape wrong: {l1_scores.shape}"
             )
 
             # Step D: Find the Winners (Elites)
@@ -232,8 +241,6 @@ def generate_dream_sequence_cem(
             std = elites.std(dim=0) + 1e-3  # Tiny noise floor to prevent 0.0 collapse
 
             assert mean.shape == (28,), "Mean calculation failed!"
-            prev_mean = mean.clone()
-            prev_std = std.clone()
 
             top_elite_action = elites[0].clone()
 
@@ -248,9 +255,10 @@ def generate_dream_sequence_cem(
             print(
                 f"  CEM Iter {cem_iter + 1}/{cem_iters} | Best L1: {best_l1_scores[0].item():.5f}"
             )
-            print(f"  ├─ Best Act: [{formatted_action}]")
-            print(f"  ├─ Dist Mean:[{mean_str}]")
-            print(f"  └─ Dist Std: [{std_str}]")
+            print(f"  ├─ Best Act:   [{formatted_action}]")
+            print(f"  ├─ Dist Mean:  [{mean_str}]")
+            print(f"  ├─ Dist Std:   [{std_str}]")
+            print(f"  └─ Act, Elites:[{actions.shape[0]}, {n_elites}]")
 
         # --- END CEM THINKING LOOP ---
 
@@ -332,10 +340,10 @@ if __name__ == "__main__":
         model,
         START_LATENT,
         TARGET_LATENT,
-        num_samples=100,
+        num_samples=300,
         horizon=6,
         cem_iters=5,
-        elite_frac=0.15,
-        num_trials=1,
+        elite_frac=0.10,
+        num_trials=3,
         device=DEVICE,
     )
