@@ -104,13 +104,160 @@ def generate_dream_sequence(
     return sequence, mse_log
 
 
+def generate_dream_sequence_cem(
+    model,
+    z_start,
+    z_goal,
+    num_samples=100,
+    horizon=6,
+    cem_iters=5,
+    elite_frac=0.15,
+    device=DEVICE,
+):
+    model.eval()
+    sequence = []
+    l1_log = []
+
+    # 1. INITIAL SHAPE ENFORCEMENT
+    # Ensure z_start and z_goal have a batch dimension of 1.
+    # Expected target shape: [1, 2048, 1024]
+    if z_start.dim() == 2:
+        z_start = z_start.unsqueeze(0)
+    if z_goal.dim() == 2:
+        z_goal = z_goal.unsqueeze(0)
+
+    z_step = z_start.to(device)
+    z_goal = z_goal.to(device)
+
+    assert z_step.shape == (1, 2048, 1024), f"z_step shape wrong: {z_step.shape}"
+    assert z_goal.shape == (1, 2048, 1024), f"z_goal shape wrong: {z_goal.shape}"
+
+    # Calculate Elites (e.g., 15% of 100 = 15)
+    n_elites = max(1, int(num_samples * elite_frac))
+
+    for step in range(horizon):
+        start_time = time.time()
+        print(f"\n🚀 --- Step {step + 1}/{horizon} ---")
+
+        # Start with a wide search area
+        mean = torch.zeros(28, device=device)
+        std = torch.ones(28, device=device)
+
+        # --- CEM OPTIMIZATION LOOP ---
+        for cem_iter in range(cem_iters):
+            # Step A: Generate Action Guesses
+            if cem_iter == 0:
+                # True Uniform Cold Start [-1, 1]
+                actions = (torch.rand(num_samples, 28, device=device) * 2.0) - 1.0
+            else:
+                # Gaussian Squeeze around previous winners
+                actions = torch.normal(
+                    mean.repeat(num_samples, 1), std.repeat(num_samples, 1)
+                )
+                actions = torch.clamp(actions, min=-1.0, max=-1.0)  # Physical limits
+
+            assert actions.shape == (num_samples, 28), (
+                f"Actions shape wrong: {actions.shape}"
+            )
+
+            # Step B: Evaluate Guesses in Chunks
+            all_preds = []
+            chunk_size = 50
+
+            for start_idx in range(0, num_samples, chunk_size):
+                end_idx = start_idx + chunk_size
+                action_chunk = actions[start_idx:end_idx]
+
+                # Figure out how many items are actually in this chunk (usually 50)
+                current_batch_size = action_chunk.size(0)
+
+                # Copy the current state 'current_batch_size' times so we can predict them all at once
+                # Shape goes from [1, 2048, 1024] -> [50, 2048, 1024]
+                z_step_chunk = z_step.repeat(current_batch_size, 1, 1)
+
+                assert z_step_chunk.shape == (current_batch_size, 2048, 1024), (
+                    "Repeat logic failed!"
+                )
+
+                # Predict the next frame
+                with torch.no_grad():
+                    with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
+                        pred_chunk = model(z_step_chunk, action_chunk)
+                        all_preds.append(pred_chunk)
+
+            # Glue the chunks back together into one massive tensor
+            # Shape: [num_samples, 2048, 1024]
+            z_next_preds = torch.cat(all_preds, dim=0)
+            assert z_next_preds.shape == (num_samples, 2048, 1024), "Cat logic failed!"
+
+            # Step C: Calculate the Score (Mean L1 Loss)
+            # Find the absolute difference, then average across Tokens (dim 1) and Features (dim 2)
+            # This leaves us with exactly 1 score per sample in the batch.
+            l1_diffs = torch.abs(z_next_preds - z_goal)
+            l1_scores = torch.mean(l1_diffs, dim=(1, 2))
+
+            assert l1_scores.shape == (num_samples,), (
+                f"Scores shape wrong: {l1_scores.shape}"
+            )
+
+            # Step D: Find the Winners (Elites)
+            best_l1_scores, top_idx = torch.topk(l1_scores, n_elites, largest=False)
+
+            # Extract the actual 28-D actions that scored the best
+            # Shape: [n_elites, 28]
+            elites = actions[top_idx]
+            assert elites.shape == (n_elites, 28), "Elite extraction failed!"
+
+            # Step E: Update the Search Area for the next loop
+            mean = elites.mean(dim=0)
+            std = elites.std(dim=0) + 1e-3  # Tiny noise floor to prevent 0.0 collapse
+
+            assert mean.shape == (28,), "Mean calculation failed!"
+
+            print(
+                f"  CEM Iter {cem_iter + 1}/{cem_iters} | Best L1: {best_l1_scores[0].item():.5f}"
+            )
+
+        # --- END CEM THINKING LOOP ---
+
+        # After 5 iterations, the 'mean' is our chosen surgical action for this step.
+        # Reshape from [28] -> [1, 28] so the model can process it
+        best_action = mean.unsqueeze(0)
+        assert best_action.shape == (1, 28), "Final action shape wrong!"
+
+        # Get the actual predicted next state for this chosen action to carry forward
+        with torch.no_grad():
+            with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
+                chosen_z_next = model(z_step, best_action)
+
+        assert chosen_z_next.shape == (1, 2048, 1024), "Chosen state shape wrong!"
+
+        # Log metrics and prepare for next real-world step
+        final_step_l1 = torch.mean(torch.abs(chosen_z_next - z_goal)).item()
+
+        # Save the action to our sequence list (strip the batch dimension to make it just 28 numbers)
+        sequence.append(best_action.squeeze(0).cpu().numpy())
+        l1_log.append(final_step_l1)
+
+        # Advance the simulation state
+        z_step = chosen_z_next
+
+        torch.mps.empty_cache()
+        step_elapsed = time.time() - start_time
+        print(
+            f"✅ Step {step + 1} Complete | Action L1: {final_step_l1:.5f} | Time: {step_elapsed:.2f}s"
+        )
+
+    return sequence, l1_log
+
+
 def get_multi_trial_sequence_to_disk(
     model, z_start, z_goal, num_trials=10, num_samples=1000, horizon=6, device=DEVICE
 ):
     all_sequences = []
     all_mse = []
     for i in range(num_trials):
-        sequence, mse = generate_dream_sequence(
+        sequence, mse = generate_dream_sequence_cem(
             model, z_start, z_goal, num_samples, horizon, device
         )
         all_sequences.append(sequence)
@@ -118,9 +265,9 @@ def get_multi_trial_sequence_to_disk(
 
     final_array = np.array(all_sequences)
     final_mse_arr = np.array(all_mse)
-    np.save("multi_trial_strategy_actions.npy", final_array)
-    np.save("multi_trial_strategy_mse.npy", final_mse_arr)
-    print(f"\n✅ All {num_trials} trials saved to multi_trial_strategy.npy")
+    np.save("multi_trial_cem_strategy_actions.npy", final_array)
+    np.save("multi_trial_strategy_l1.npy", final_mse_arr)
+    print(f"\n✅ All {num_trials} trials saved to multi_trial_cem_strategy_actions.npy")
 
 
 if __name__ == "__main__":
