@@ -85,7 +85,26 @@ Ok gonna try to increase hiddendim to 1024 ... 8 heads ... action concat ... cos
 🚀 Training on 4159 transitions using mps...
 Epoch 000 | Loss: 1.35997 | Base: 1.58968 | Progress: 14.5% | Avg Epoch: 2038.25s | Total: 00:33:58 | Time: 2026-03-09 23:10:36 | LR: 0.00020
 Epoch 005 | Loss: 1.21905 | Base: 1.58972 | Progress: 23.3% | Avg Epoch: 5440.68s | Total: 09:04:04 | Time: 2026-03-10 07:40:41 | LR: 0.00018
+
+
 ....WAY TOO SLOW ... gonna go back to 256 hidden layer, action broadcast, 4 heads ... 
+
+==>
+
+🚀 Training on 4159 transitions using mps... 
+Epoch 000 | Loss: 1.42448 | Base: 1.58980 | Progress: 10.4% | Avg Epoch: 560.19s | Total: 00:09:20 | Time: 2026-03-10 11:13:03 | LR: 0.00020
+Epoch 005 | Loss: 1.30975 | Base: 1.58973 | Progress: 17.6% | Avg Epoch: 558.24s | Total: 00:55:49 | Time: 2026-03-10 11:59:32 | LR: 0.00020
+Epoch 010 | Loss: 1.28990 | Base: 1.58971 | Progress: 18.9% | Avg Epoch: 557.87s | Total: 01:42:16 | Time: 2026-03-10 12:45:59 | LR: 0.00018
+Epoch 015 | Loss: 1.27927 | Base: 1.58974 | Progress: 19.5% | Avg Epoch: 557.58s | Total: 02:28:41 | Time: 2026-03-10 13:32:24 | LR: 0.00017
+Epoch 020 | Loss: 1.27184 | Base: 1.58975 | Progress: 20.0% | Avg Epoch: 558.02s | Total: 03:15:18 | Time: 2026-03-10 14:19:01 | LR: 0.00015
+Epoch 025 | Loss: 1.26661 | Base: 1.58970 | Progress: 20.3% | Avg Epoch: 558.97s | Total: 04:02:13 | Time: 2026-03-10 15:05:56 | LR: 0.00012
+Epoch 030 | Loss: 1.26226 | Base: 1.58974 | Progress: 20.6% | Avg Epoch: 559.94s | Total: 04:49:18 | Time: 2026-03-10 15:53:01 | LR: 0.00010
+Epoch 035 | Loss: 1.25876 | Base: 1.58970 | Progress: 20.8% | Avg Epoch: 562.75s | Total: 05:37:39 | Time: 2026-03-10 16:41:22 | LR: 0.00008
+Epoch 040 | Loss: 1.25574 | Base: 1.58968 | Progress: 21.0% | Avg Epoch: 563.43s | Total: 06:25:00 | Time: 2026-03-10 17:28:43 | LR: 0.00005
+Epoch 045 | Loss: 1.25335 | Base: 1.58968 | Progress: 21.2% | Avg Epoch: 562.98s | Total: 07:11:37 | Time: 2026-03-10 18:15:20 | LR: 0.00003
+Epoch 050 | Loss: 1.25164 | Base: 1.58972 | Progress: 21.3% | Avg Epoch: 562.29s | Total: 07:57:56 | Time: 2026-03-10 19:01:39 | LR: 0.00002
+Epoch 055 | Loss: 1.25053 | Base: 1.58970 | Progress: 21.3% | Avg Epoch: 561.75s | Total: 08:44:18 | Time: 2026-03-10 19:48:01 | LR: 0.00001
+Epoch 059 | Loss: 1.25008 | Base: 1.58969 | Progress: 21.4% | Avg Epoch: 563.02s | Total: 09:23:01 | Time: 2026-03-10 20:26:44 | LR: 0.00001
 
 
 

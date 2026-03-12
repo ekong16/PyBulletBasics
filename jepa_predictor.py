@@ -130,72 +130,151 @@ class WorldPredictorPro(nn.Module):
         return z0 + delta
 
 
+# --- 4. THE AUDITOR (New) ---
+class InverseDynamicsNet(nn.Module):
+    def __init__(self, feature_dim=1024, hidden_dim=512, action_dim=28):
+        super().__init__()
+        # Tiny MLP that runs in milliseconds
+        self.mlp = nn.Sequential(
+            nn.Linear(feature_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 128),
+            nn.LayerNorm(128),
+            nn.ReLU(),
+            nn.Linear(128, action_dim),
+        )
+
+    def forward(self, z_0, z_1):
+        # 1. Isolate the movement
+        delta_z = z_1 - z_0
+        # 2. Delta-Max: Find the strongest signal, drop the background
+        z_pooled = delta_z.max(dim=1).values
+        # 3. Guess the action
+        return self.mlp(z_pooled)
+
+
 # --- 4. TRAINING LOOP ---
 def train():
     dataset = JEPADataset(LATENT_DIR)
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
+    # 1. Instantiate Both Models
     model = WorldPredictorPro().to(DEVICE)
-    summary(
-        model, input_size=[(BATCH_SIZE, 2048, 1024), (BATCH_SIZE, 28)], device=DEVICE
-    )
-    optimizer = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=EPOCHS, eta_min=1e-5
-    )
-    criterion = nn.L1Loss()
+    inverse_net = InverseDynamicsNet().to(DEVICE)
 
-    start_training_time = time.time()  # Start the "Total Elapsed" clock
-    print(f"🚀 Training on {len(dataset)} transitions using {DEVICE}...")
+    # 2. Two Separate Wallets (Optimizers)
+    # We give the Inverse Net a slightly higher LR so it stays smarter than the Predictor
+    opt_predictor = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
+    opt_inverse = torch.optim.AdamW(
+        inverse_net.parameters(), lr=LR * 2, weight_decay=0.01
+    )
+
+    # Anneal both schedules
+    sched_predictor = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt_predictor, T_max=EPOCHS, eta_min=1e-5
+    )
+    sched_inverse = torch.optim.lr_scheduler.CosineAnnealingLR(
+        opt_inverse, T_max=EPOCHS, eta_min=1e-5
+    )
+
+    l1_criterion = nn.L1Loss()
+    mse_criterion = nn.MSELoss()  # Actions usually use MSE
+
+    start_training_time = time.time()
+    print(
+        f"🚀 Training on {len(dataset)} transitions using {DEVICE} with Inverse Cycle..."
+    )
 
     for ep in range(EPOCHS):
         model.train()
-        total_loss, total_base = 0, 0
+        inverse_net.train()
+
+        total_fwd_loss, total_cyc_loss, total_base = 0, 0, 0
 
         for z0, act, z1 in loader:
             z0, act, z1 = z0.to(DEVICE), act.to(DEVICE), z1.to(DEVICE)
 
+            # ==========================================
+            # PHASE 1: TRAIN THE DETECTIVE (Reality Only)
+            # ==========================================
             with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
-                optimizer.zero_grad()
-                pred = model(z0, act)
-                loss = criterion(pred, z1)
+                # .detach() is critical here to prevent cross-contamination
+                pred_act_real = inverse_net(z0, z1)
+                inv_loss = mse_criterion(pred_act_real, act)
 
-            loss.backward()
-            optimizer.step()
+            opt_inverse.zero_grad()
+            inv_loss.backward()
+            opt_inverse.step()
 
-            total_loss += loss.item()
-            total_base += criterion(z0, z1).item()
+            # ==========================================
+            # PHASE 2: TRAIN THE PREDICTOR (Cycle Loss)
+            # ==========================================
+            with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
+                # 1. Predict the Hallucination
+                z1_pred = model(z0, act)
+                fwd_loss = l1_criterion(z1_pred, z1)
 
-        scheduler.step()
-        current_lr = scheduler.get_last_lr()[0]
+                # 2. Interrogate the Hallucination
+                # No .detach() on z1_pred because gradients MUST flow back to the Predictor
+                pred_act_fake = inverse_net(z0, z1_pred)
+                cyc_loss = mse_criterion(pred_act_fake, act)
 
-        # Calculation Phase
+                # 3. The 0.5 Leash
+                total_pred_loss = fwd_loss + (0.5 * cyc_loss)
+
+            opt_predictor.zero_grad()
+            total_pred_loss.backward()
+            opt_predictor.step()
+
+            # Tracking
+            total_fwd_loss += fwd_loss.item()
+            total_cyc_loss += cyc_loss.item()
+            total_base += l1_criterion(z0, z1).item()
+
+        # Step both schedules
+        sched_predictor.step()
+        sched_inverse.step()
+        current_lr = sched_predictor.get_last_lr()[0]
+
+        # ==========================================
+        # TELEMETRY & REPORTING
+        # ==========================================
         if ep % 5 == 0 or ep == (EPOCHS - 1):
-            avg_loss = total_loss / len(loader)
+            avg_fwd = total_fwd_loss / len(loader)
+            avg_cyc = total_cyc_loss / len(loader)
             avg_base = total_base / len(loader)
-            improvement = ((avg_base - avg_loss) / avg_base) * 100
+
+            # Forward Improvement (%)
+            fwd_imp = ((avg_base - avg_fwd) / avg_base) * 100
+
+            # Action Consistency Improvement (%)
+            # Assuming actions are roughly -1 to 1, random guessing yields an MSE of ~0.33
+            cyc_imp = ((0.333 - avg_cyc) / 0.333) * 100
 
             # Time Metrics
             current_time = time.time()
             elapsed_total = current_time - start_training_time
-            # We average the time since the start over the number of completed epochs
             avg_epoch_time = elapsed_total / (ep + 1)
-
-            # Format times for readability (MM:SS)
             total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
             avg_str = f"{avg_epoch_time:.2f}s"
-            now = datetime.now().replace(microsecond=0)
-
-            # Format: HH:MM:SS (24-hour)
-            formatted_time = now.strftime("%H:%M:%S")
+            now = datetime.now().replace(microsecond=0).strftime("%H:%M:%S")
 
             print(
-                f"Epoch {ep:03d} | Loss: {avg_loss:.5f} | Base: {avg_base:.5f} | "
-                f"Progress: {improvement:.1f}% | Avg Epoch: {avg_str} | Total: {total_str} | Time: {now} | LR: {current_lr:.5f}"
+                f"Ep {ep:03d} | Fwd: {avg_fwd:.4f} ({fwd_imp:+.1f}%) | "
+                f"Cyc: {avg_cyc:.4f} ({cyc_imp:+.1f}%) | "
+                f"Base: {avg_base:.4f} | "
+                f"Avg: {avg_str} | Tot: {total_str} | LR: {current_lr:.5f}"
+                f"Timestamp: {now}"
             )
 
-    torch.save(model.state_dict(), "world_model_final.pth")
-    print("✅ Model weights saved to world_model_final.pth")
+    # Save a combined checkpoint so you don't lose the auditor's brain
+    checkpoint = {
+        "model_state": model.state_dict(),
+        "inverse_state": inverse_net.state_dict(),
+    }
+    torch.save(checkpoint, "world_model_with_cycle.pth")
+    print("✅ Model weights saved to world_model_with_cycle.pth")
 
 
 if __name__ == "__main__":

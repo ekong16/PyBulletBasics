@@ -340,10 +340,10 @@ if __name__ == "__main__":
         model,
         START_LATENT,
         TARGET_LATENT,
-        num_samples=300,
+        num_samples=100,
         horizon=6,
         cem_iters=5,
-        elite_frac=0.10,
+        elite_frac=0.20,
         num_trials=3,
         device=DEVICE,
     )
