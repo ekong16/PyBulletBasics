@@ -154,6 +154,75 @@ class InverseDynamicsNet(nn.Module):
         return self.mlp(z_pooled)
 
 
+class TransformerInverseNet(nn.Module):
+    def __init__(self, feature_dim=1024, hidden_dim=256, num_queries=8, action_dim=28):
+        super().__init__()
+
+        # 1. THE COMPRESSOR (Squash 1024 -> 256 to save Mac memory)
+        self.compressor = nn.Linear(feature_dim, hidden_dim)
+
+        # 2. THE 8 DETECTIVES (Learnable Queries)
+        self.readout_queries = nn.Parameter(torch.randn(1, num_queries, hidden_dim))
+
+        # 3. THE MATCHER & EXTRACTOR (Cross-Attention)
+        self.attention = nn.MultiheadAttention(
+            embed_dim=hidden_dim, num_heads=4, batch_first=True
+        )
+
+        # 4. THE BRAIN (Translates the 8 tokens into 28 torques)
+        # 8 queries * 256 dims = 2048 total inputs
+        mlp_input_dim = num_queries * hidden_dim
+
+        self.mlp = nn.Sequential(
+            nn.Linear(mlp_input_dim, 512),
+            nn.LayerNorm(512),
+            nn.GELU(),
+            nn.Linear(512, 256),
+            nn.LayerNorm(256),
+            nn.GELU(),
+            nn.Linear(256, action_dim),
+        )
+
+    def forward(self, z_0, z_1):
+        # INPUT SHAPES:
+        # z_0: [Batch, 2048, 1024] (The starting video frame latents)
+        # z_1: [Batch, 2048, 1024] (The ending video frame latents)
+
+        # 1. Delete the static background room
+        delta_z = z_1 - z_0
+        # SHAPE: [Batch, 2048, 1024]
+        # (Subtraction doesn't change the size, just the values)
+
+        # 2. Compress the video patches to save RAM
+        x = self.compressor(delta_z)
+        # SHAPE: [Batch, 2048, 256]
+        # (The 1024 features are squashed down to 256)
+
+        # 3. Photocopy the 8 Detectives for however many videos are in the batch
+        B = x.size(0)
+        q = self.readout_queries.expand(B, -1, -1)
+        # SHAPE: [Batch, 8, 256]
+        # (We expanded the '1' into 'B'. Now we have B sets of 8 detectives, each with a 256-D brain)
+
+        # 4. Match and Extract (The magic line)
+        # Query (q) searches Key (x), and extracts from Value (x)
+        attn_out, _ = self.attention(query=q, key=x, value=x)
+        # SHAPE: [Batch, 8, 256]
+        # (The 2048 patches have been collapsed. Only the 8 extracted evidence tokens remain)
+
+        # 5. Lay the 8 tokens end-to-end into a single flat line
+        z_pooled = attn_out.flatten(start_dim=1)
+        # SHAPE: [Batch, 2048]
+        # (8 tokens * 256 features = 2048. We flattened the grid into a single 1D array for the MLP)
+
+        # 6. Predict the 28 joint torques
+        actions_pred = self.mlp(z_pooled)
+        # SHAPE OUTPUT: [Batch, 28]
+        # (The MLP reads the 2048 evidence array and outputs exactly 28 motor torques)
+
+        return actions_pred
+
+
 # --- 4. TRAINING LOOP ---
 def train():
     dataset = JEPADataset(LATENT_DIR)
@@ -161,7 +230,7 @@ def train():
 
     # 1. Instantiate Both Models
     model = WorldPredictorPro().to(DEVICE)
-    inverse_net = InverseDynamicsNet().to(DEVICE)
+    inverse_net = TransformerInverseNet().to(DEVICE)
 
     # 2. Two Separate Wallets (Optimizers)
     # We give the Inverse Net a slightly higher LR so it stays smarter than the Predictor
@@ -192,10 +261,11 @@ def train():
 
         (
             total_loss_pred_only,
-            total_loss_cyc_only,
+            total_loss_cyc_fake_only,
+            total_loss_inv,
             total_base_pure_diff,
             total_loss_backprop,
-        ) = 0, 0, 0, 0
+        ) = 0, 0, 0, 0, 0
 
         for z0, act, z1 in loader:
             z0, act, z1 = z0.to(DEVICE), act.to(DEVICE), z1.to(DEVICE)
@@ -233,8 +303,9 @@ def train():
             opt_predictor.step()
 
             # Tracking
+            total_loss_inv += inv_loss.item()
             total_loss_pred_only += fwd_loss_pred_only.item()
-            total_loss_cyc_only += cyc_loss.item()
+            total_loss_cyc_fake_only += cyc_loss.item()
             total_loss_backprop += loss_backprop.item()
             total_base_pure_diff += l1_criterion(z0, z1).item()
 
@@ -248,8 +319,9 @@ def train():
         # TELEMETRY & REPORTING
         # ==========================================
         # if ep %  == 0 or ep == (EPOCHS - 1):
+        avg_loss_inv = total_loss_inv / len(loader)
         avg_loss_pred_only = total_loss_pred_only / len(loader)
-        avg_loss_cyc_only = total_loss_cyc_only / len(loader)
+        avg_loss_cyc_fake_only = total_loss_cyc_fake_only / len(loader)
         avg_base_pure_diff = total_base_pure_diff / len(loader)
         avg_loss_backprop = total_loss_backprop / len(loader)
 
@@ -260,7 +332,7 @@ def train():
 
         # Action Consistency Improvement (%)
         # Assuming actions are roughly -1 to 1, random guessing yields an MSE of ~0.33
-        cyc_imp = ((0.333 - avg_loss_cyc_only) / 0.333) * 100
+        cyc_imp = ((0.333 - avg_loss_cyc_fake_only) / 0.333) * 100
 
         # Time Metrics
         current_time = time.time()
@@ -272,12 +344,13 @@ def train():
 
         print(
             f"Epoch {ep:03d} | "
-            f"Loss_Pred_Only: {avg_loss_pred_only:7.5f} | "  # 7 chars wide total
             f"Loss_Backprop: {avg_loss_backprop:7.5f} | "
+            f"Loss_Pred_Only: {avg_loss_pred_only:7.5f} | "  # 7 chars wide total
             f"Base: {avg_base_pure_diff:7.5f} | "
-            f"Progress_pred_only: {pred_only_improvement:>6.1f}% | "  # >6 right-aligns to 6 chars (e.g. '  9.5')
-            f"Cyc_Imp: {cyc_imp:>+7.1f}% | "  # >+7 forces the +/- sign and right-aligns
-            f"Avg: {avg_epoch_time:>6.1f}s | "  # Use the raw float here, not avg_str!
+            f"Progress_pred_only: {pred_only_improvement:>5.1f}% | "  # >6 right-aligns to 6 chars (e.g. '  9.5')
+            f"Loss_cyc (pred): {avg_loss_cyc_fake_only:7.5f} | "
+            f"Inv Loss: {avg_loss_inv:7.5f} | "
+            # f"Avg Ep Time: {avg_epoch_time:>5.1f}s | "  # Use the raw float here, not avg_str!
             f"Elapsed: {total_str} | "  # HH:MM:SS is naturally fixed width
             f"Time: {now} | "
             f"LR_main: {current_lr:.5f} | "
