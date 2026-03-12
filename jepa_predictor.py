@@ -190,7 +190,12 @@ def train():
         model.train()
         inverse_net.train()
 
-        total_fwd_loss, total_cyc_loss, total_base = 0, 0, 0
+        (
+            total_loss_pred_only,
+            total_loss_cyc_only,
+            total_base_pure_diff,
+            total_loss_backprop,
+        ) = 0, 0, 0, 0
 
         for z0, act, z1 in loader:
             z0, act, z1 = z0.to(DEVICE), act.to(DEVICE), z1.to(DEVICE)
@@ -213,7 +218,7 @@ def train():
             with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
                 # 1. Predict the Hallucination
                 z1_pred = model(z0, act)
-                fwd_loss = l1_criterion(z1_pred, z1)
+                fwd_loss_pred_only = l1_criterion(z1_pred, z1)
 
                 # 2. Interrogate the Hallucination
                 # No .detach() on z1_pred because gradients MUST flow back to the Predictor
@@ -221,52 +226,63 @@ def train():
                 cyc_loss = mse_criterion(pred_act_fake, act)
 
                 # 3. The 0.5 Leash
-                total_pred_loss = fwd_loss + (0.5 * cyc_loss)
+                loss_backprop = fwd_loss_pred_only + (0.5 * cyc_loss)
 
             opt_predictor.zero_grad()
-            total_pred_loss.backward()
+            loss_backprop.backward()
             opt_predictor.step()
 
             # Tracking
-            total_fwd_loss += fwd_loss.item()
-            total_cyc_loss += cyc_loss.item()
-            total_base += l1_criterion(z0, z1).item()
+            total_loss_pred_only += fwd_loss_pred_only.item()
+            total_loss_cyc_only += cyc_loss.item()
+            total_loss_backprop += loss_backprop.item()
+            total_base_pure_diff += l1_criterion(z0, z1).item()
 
         # Step both schedules
         sched_predictor.step()
         sched_inverse.step()
         current_lr = sched_predictor.get_last_lr()[0]
+        current_lr_inv = sched_inverse.get_last_lr()[0]
 
         # ==========================================
         # TELEMETRY & REPORTING
         # ==========================================
-        if ep % 5 == 0 or ep == (EPOCHS - 1):
-            avg_fwd = total_fwd_loss / len(loader)
-            avg_cyc = total_cyc_loss / len(loader)
-            avg_base = total_base / len(loader)
+        # if ep %  == 0 or ep == (EPOCHS - 1):
+        avg_loss_pred_only = total_loss_pred_only / len(loader)
+        avg_loss_cyc_only = total_loss_cyc_only / len(loader)
+        avg_base_pure_diff = total_base_pure_diff / len(loader)
+        avg_loss_backprop = total_loss_backprop / len(loader)
 
-            # Forward Improvement (%)
-            fwd_imp = ((avg_base - avg_fwd) / avg_base) * 100
+        # Forward Improvement (%)
+        pred_only_improvement = (
+            (avg_base_pure_diff - avg_loss_pred_only) / avg_base_pure_diff
+        ) * 100
 
-            # Action Consistency Improvement (%)
-            # Assuming actions are roughly -1 to 1, random guessing yields an MSE of ~0.33
-            cyc_imp = ((0.333 - avg_cyc) / 0.333) * 100
+        # Action Consistency Improvement (%)
+        # Assuming actions are roughly -1 to 1, random guessing yields an MSE of ~0.33
+        cyc_imp = ((0.333 - avg_loss_cyc_only) / 0.333) * 100
 
-            # Time Metrics
-            current_time = time.time()
-            elapsed_total = current_time - start_training_time
-            avg_epoch_time = elapsed_total / (ep + 1)
-            total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
-            avg_str = f"{avg_epoch_time:.2f}s"
-            now = datetime.now().replace(microsecond=0).strftime("%H:%M:%S")
+        # Time Metrics
+        current_time = time.time()
+        elapsed_total = current_time - start_training_time
+        avg_epoch_time = elapsed_total / (ep + 1)
+        total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
+        # avg_str = f"{avg_epoch_time:.2f}s"
+        now = datetime.now().replace(microsecond=0).strftime("%H:%M:%S")
 
-            print(
-                f"Ep {ep:03d} | Fwd: {avg_fwd:.4f} ({fwd_imp:+.1f}%) | "
-                f"Cyc: {avg_cyc:.4f} ({cyc_imp:+.1f}%) | "
-                f"Base: {avg_base:.4f} | "
-                f"Avg: {avg_str} | Tot: {total_str} | LR: {current_lr:.5f}"
-                f"Timestamp: {now}"
-            )
+        print(
+            f"Epoch {ep:03d} | "
+            f"Loss_Pred_Only: {avg_loss_pred_only:7.5f} | "  # 7 chars wide total
+            f"Loss_Backprop: {avg_loss_backprop:7.5f} | "
+            f"Base: {avg_base_pure_diff:7.5f} | "
+            f"Progress_pred_only: {pred_only_improvement:>6.1f}% | "  # >6 right-aligns to 6 chars (e.g. '  9.5')
+            f"Cyc_Imp: {cyc_imp:>+7.1f}% | "  # >+7 forces the +/- sign and right-aligns
+            f"Avg: {avg_epoch_time:>6.1f}s | "  # Use the raw float here, not avg_str!
+            f"Elapsed: {total_str} | "  # HH:MM:SS is naturally fixed width
+            f"Time: {now} | "
+            f"LR_main: {current_lr:.5f} | "
+            f"LR_inv: {current_lr_inv:.5f}"
+        )
 
     # Save a combined checkpoint so you don't lose the auditor's brain
     checkpoint = {

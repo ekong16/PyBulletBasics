@@ -107,4 +107,5 @@ Epoch 055 | Loss: 1.25053 | Base: 1.58970 | Progress: 21.3% | Avg Epoch: 561.75s
 Epoch 059 | Loss: 1.25008 | Base: 1.58969 | Progress: 21.4% | Avg Epoch: 563.02s | Total: 09:23:01 | Time: 2026-03-10 20:26:44 | LR: 0.00001
 
 
+gonna try the cycle next -- predict the action in addition to the next state ... and see if we can back out the action ...
 
