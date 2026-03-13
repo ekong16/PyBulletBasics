@@ -372,3 +372,61 @@ I think the inverse direction is a total failure ... here is a transformer archi
 Epoch 000 | Inv Loss: 0.50583 ( -1.2%) | Elapsed: 00:10:28 | Time: 13:18:23 | LR_i: 0.00090
 Epoch 001 | Inv Loss: 0.50006 ( -0.0%) | Elapsed: 00:20:35 | Time: 13:28:30 | LR_i: 0.00090
 Epoch 002 | Inv Loss: 0.49955 ( +0.1%) | Elapsed: 00:31:18 | Time: 13:39:13 | LR_i: 0.00089
+
+
+Ok compressed action, concat, delta scaling -- kind of works:
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Base: 1.58971 | Loss_Pred: 1.58971 ( +0.0%) | Elapsed: 00:10:46 | Time: 15:15:39 | LR_m: 0.00030 | Scale: 0.1000
+Epoch 001 | Base: 1.58978 | Loss_Pred: 1.58957 ( +0.0%) | Elapsed: 00:21:16 | Time: 15:26:08 | LR_m: 0.00030 | Scale: 0.0847
+Epoch 002 | Base: 1.58972 | Loss_Pred: 1.55315 ( +2.3%) | Elapsed: 00:33:00 | Time: 15:37:52 | LR_m: 0.00030 | Scale: 0.1775
+
+Gonna train on fewer data ... hopefully will be faster... double inject the action ... seems to stall ... 
+🚀 Training on 400 transitions using mps with Inverse Cycle...
+Epoch 000 | Base: 1.59536 | Loss_Pred: 1.59801 ( -0.2%) | Elapsed: 00:01:07 | Time: 15:44:57 | LR_m: 0.00030 | Scale: 0.0961
+Epoch 001 | Base: 1.59536 | Loss_Pred: 1.59781 ( -0.2%) | Elapsed: 00:02:08 | Time: 15:45:58 | LR_m: 0.00030 | Scale: 0.0923
+Epoch 002 | Base: 1.59536 | Loss_Pred: 1.59762 ( -0.1%) | Elapsed: 00:03:09 | Time: 15:46:58 | LR_m: 0.00030 | Scale: 0.0886
+Epoch 003 | Base: 1.59536 | Loss_Pred: 1.59744 ( -0.1%) | Elapsed: 00:04:18 | Time: 15:48:08 | LR_m: 0.00030 | Scale: 0.0849
+Epoch 004 | Base: 1.59536 | Loss_Pred: 1.59728 ( -0.1%) | Elapsed: 00:05:26 | Time: 15:49:15 | LR_m: 0.00030 | Scale: 0.0813
+Epoch 005 | Base: 1.59536 | Loss_Pred: 1.59712 ( -0.1%) | Elapsed: 00:06:34 | Time: 15:50:24 | LR_m: 0.00029 | Scale: 0.0778
+Epoch 006 | Base: 1.59536 | Loss_Pred: 1.59697 ( -0.1%) | Elapsed: 00:07:47 | Time: 15:51:36 | LR_m: 0.00029 | Scale: 0.0744
+Epoch 007 | Base: 1.59536 | Loss_Pred: 1.59684 ( -0.1%) | Elapsed: 00:08:56 | Time: 15:52:46 | LR_m: 0.00029 | Scale: 0.0712
+Epoch 008 | Base: 1.59536 | Loss_Pred: 1.59671 ( -0.1%) | Elapsed: 00:10:02 | Time: 15:53:51 | LR_m: 0.00028 | Scale: 0.0680
+Epoch 009 | Base: 1.59536 | Loss_Pred: 1.59659 ( -0.1%) | Elapsed: 00:11:12 | Time: 15:55:02 | LR_m: 0.00028 | Scale: 0.0649
+Epoch 010 | Base: 1.59536 | Loss_Pred: 1.59649 ( -0.1%) | Elapsed: 00:12:53 | Time: 15:56:42 | LR_m: 0.00028 | Scale: 0.0620
+
+Ok ... i think its working ... masked loss ... 
+🚀 Training on 400 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_BackProp: 164.07297 | Base: 1.59536 | Loss_Pred: 1.59493 ( +0.0%) | Elapsed: 00:01:01 | Time: 16:04:24 | LR_m: 0.00030 | Scale: 0.0988
+Epoch 001 | Loss_BackProp: 162.43235 | Base: 1.59536 | Loss_Pred: 1.58986 ( +0.3%) | Elapsed: 00:02:03 | Time: 16:05:25 | LR_m: 0.00030 | Scale: 0.1025
+Epoch 002 | Loss_BackProp: 160.74869 | Base: 1.59536 | Loss_Pred: 1.58352 ( +0.7%) | Elapsed: 00:03:08 | Time: 16:06:31 | LR_m: 0.00030 | Scale: 0.1069
+Epoch 003 | Loss_BackProp: 159.28393 | Base: 1.59536 | Loss_Pred: 1.57524 ( +1.3%) | Elapsed: 00:04:12 | Time: 16:07:34 | LR_m: 0.00030 | Scale: 0.1117
+Epoch 004 | Loss_BackProp: 157.72872 | Base: 1.59536 | Loss_Pred: 1.56524 ( +1.9%) | Elapsed: 00:05:13 | Time: 16:08:35 | LR_m: 0.00030 | Scale: 0.1166
+Epoch 005 | Loss_BackProp: 156.28517 | Base: 1.59536 | Loss_Pred: 1.55618 ( +2.5%) | Elapsed: 00:06:15 | Time: 16:09:38 | LR_m: 0.00029 | Scale: 0.1212
+Epoch 006 | Loss_BackProp: 154.97941 | Base: 1.59536 | Loss_Pred: 1.54696 ( +3.0%) | Elapsed: 00:07:19 | Time: 16:10:42 | LR_m: 0.00029 | Scale: 0.1257
+Epoch 007 | Loss_BackProp: 153.79717 | Base: 1.59536 | Loss_Pred: 1.53877 ( +3.5%) | Elapsed: 00:08:25 | Time: 16:11:48 | LR_m: 0.00029 | Scale: 0.1299
+Epoch 008 | Loss_BackProp: 152.75121 | Base: 1.59536 | Loss_Pred: 1.53111 ( +4.0%) | Elapsed: 00:09:29 | Time: 16:12:52 | LR_m: 0.00028 | Scale: 0.1340
+Epoch 009 | Loss_BackProp: 151.83436 | Base: 1.59536 | Loss_Pred: 1.52410 ( +4.5%) | Elapsed: 00:10:32 | Time: 16:13:55 | LR_m: 0.00028 | Scale: 0.1377
+Epoch 010 | Loss_BackProp: 151.04019 | Base: 1.59536 | Loss_Pred: 1.51855 ( +4.8%) | Elapsed: 00:11:37 | Time: 16:15:00 | LR_m: 0.00028 | Scale: 0.1411
+Epoch 011 | Loss_BackProp: 150.34168 | Base: 1.59536 | Loss_Pred: 1.51312 ( +5.2%) | Elapsed: 00:12:41 | Time: 16:16:04 | LR_m: 0.00027 | Scale: 0.1444
+Epoch 012 | Loss_BackProp: 149.72025 | Base: 1.59536 | Loss_Pred: 1.50794 ( +5.5%) | Elapsed: 00:13:46 | Time: 16:17:08 | LR_m: 0.00027 | Scale: 0.1475
+
+make accum steps smaller and double LR ... make sure its learning before running PROD mode ...
+ACCUM = 4, LR = 6e-6
+WINNER!
+🚀 Training on 400 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_BackProp: 160.34865 | Base: 1.59536 | Loss_Pred: 1.58035 ( +0.9%) | Elapsed: 00:01:02 | Time: 16:18:56 | LR_m: 0.00060 | Scale: 0.1185
+Epoch 001 | Loss_BackProp: 153.49885 | Base: 1.59536 | Loss_Pred: 1.53987 ( +3.5%) | Elapsed: 00:02:03 | Time: 16:19:58 | LR_m: 0.00060 | Scale: 0.1414
+Epoch 002 | Loss_BackProp: 149.43577 | Base: 1.59536 | Loss_Pred: 1.50965 ( +5.4%) | Elapsed: 00:03:08 | Time: 16:21:02 | LR_m: 0.00060 | Scale: 0.1604
+Epoch 003 | Loss_BackProp: 146.86087 | Base: 1.59536 | Loss_Pred: 1.48968 ( +6.6%) | Elapsed: 00:04:12 | Time: 16:22:06 | LR_m: 0.00059 | Scale: 0.1767
+Epoch 004 | Loss_BackProp: 144.87892 | Base: 1.59536 | Loss_Pred: 1.47385 ( +7.6%) | Elapsed: 00:05:16 | Time: 16:23:10 | LR_m: 0.00059 | Scale: 0.1924
+Epoch 005 | Loss_BackProp: 143.27521 | Base: 1.59536 | Loss_Pred: 1.46099 ( +8.4%) | Elapsed: 00:06:21 | Time: 16:24:15 | LR_m: 0.00059 | Scale: 0.2069
+Epoch 006 | Loss_BackProp: 141.91330 | Base: 1.59536 | Loss_Pred: 1.45018 ( +9.1%) | Elapsed: 00:07:25 | Time: 16:25:19 | LR_m: 0.00058 | Scale: 0.2206
+Epoch 007 | Loss_BackProp: 140.83440 | Base: 1.59536 | Loss_Pred: 1.44169 ( +9.6%) | Elapsed: 00:08:30 | Time: 16:26:25 | LR_m: 0.00057 | Scale: 0.2333
+Epoch 008 | Loss_BackProp: 139.86110 | Base: 1.59536 | Loss_Pred: 1.43467 (+10.1%) | Elapsed: 00:09:32 | Time: 16:27:26 | LR_m: 0.00057 | Scale: 0.2453
+Epoch 009 | Loss_BackProp: 139.00454 | Base: 1.59536 | Loss_Pred: 1.42742 (+10.5%) | Elapsed: 00:10:46 | Time: 16:28:40 | LR_m: 0.00056 | Scale: 0.2571
+Epoch 010 | Loss_BackProp: 138.21877 | Base: 1.59536 | Loss_Pred: 1.42100 (+10.9%) | Elapsed: 00:11:52 | Time: 16:29:47 | LR_m: 0.00055 | Scale: 0.2681
+Epoch 011 | Loss_BackProp: 137.44268 | Base: 1.59536 | Loss_Pred: 1.41436 (+11.3%) | Elapsed: 00:12:59 | Time: 16:30:54 | LR_m: 0.00054 | Scale: 0.2786
+Epoch 012 | Loss_BackProp: 136.79081 | Base: 1.59536 | Loss_Pred: 1.40900 (+11.7%) | Elapsed: 00:14:06 | Time: 16:32:01 | LR_m: 0.00053 | Scale: 0.2889
+Epoch 013 | Loss_BackProp: 136.20248 | Base: 1.59536 | Loss_Pred: 1.40448 (+12.0%) | Elapsed: 00:15:12 | Time: 16:33:07 | LR_m: 0.00052 | Scale: 0.2987
+Epoch 014 | Loss_BackProp: 135.62947 | Base: 1.59536 | Loss_Pred: 1.39962 (+12.3%) | Elapsed: 00:16:22 | Time: 16:34:16 | LR_m: 0.00051 | Scale: 0.3075
+Epoch 015 | Loss_BackProp: 135.11004 | Base: 1.59536 | Loss_Pred: 1.39521 (+12.5%) | Elapsed: 00:17:29 | Time: 16:35:23 | LR_m: 0.00050 | Scale: 0.3164

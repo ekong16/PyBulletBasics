@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torchinfo import summary
 import time
+import numpy as np
 
 # --- 1. CONFIGURATION ---
 LATENT_DIR = "world_model_latents"
@@ -24,7 +25,8 @@ DEVICE_STR = "mps"
 class JEPADataset(Dataset):
     def __init__(self, path):
         self.files = sorted(glob.glob(os.path.join(path, "**/*.pt"), recursive=True))
-        import numpy as np
+
+        # self.files = self.files[:400]
 
         torch.serialization.add_safe_globals(
             [np._core.multiarray._reconstruct, np.ndarray, np.dtype]
@@ -56,12 +58,11 @@ class WorldPredictorPro(nn.Module):
         self.state_compressor = nn.Linear(latent_dim, hidden_dim)
 
         # C. THE ACTION TRANSLATOR
-        # Now it only needs to project the 28 torques to 256 dims to match the compressed state
         self.action_encoder = nn.Sequential(
-            nn.Linear(action_dim, 8),
+            nn.Linear(action_dim, 128),
             nn.GELU(),
-            nn.Linear(8, hidden_dim),
-            nn.LayerNorm(hidden_dim),
+            nn.Linear(128, hidden_dim),
+            nn.LayerNorm(hidden_dim),  # The Peacekeeper
         )
 
         # D. THE LIGHTWEIGHT TRANSFORMER
@@ -83,8 +84,8 @@ class WorldPredictorPro(nn.Module):
         # E. THE DECOMPRESSOR (Output Head)
         # Blows the 256-dim prediction back up to 1024 dims so it matches your V-JEPA target
         self.output_head = nn.Linear(hidden_dim, latent_dim)
-        nn.init.zeros_(self.output_head.weight)
-        nn.init.zeros_(self.output_head.bias)
+        # nn.init.zeros_(self.output_head.weight)
+        # nn.init.zeros_(self.output_head.bias)
 
         # The neural network will dynamically adjust this single parameter to find the right "volume"
         self.delta_scale = nn.Parameter(torch.tensor(0.1))
@@ -119,6 +120,7 @@ class WorldPredictorPro(nn.Module):
         act_token = self.action_encoder(action).unsqueeze(1)
 
         # 3. Combine: [B, 1, 256] + [B, 2048, 256] -> [B, 2049, 256]
+        x = x + act_token
         combined = torch.cat([act_token, x], dim=1)
 
         # action broadcast to all tokens [B, 2048, 256] + [B, 1, 256] -> [B, 2048, 256]
@@ -143,15 +145,17 @@ def train():
     loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 
     # 1. Instantiate Both Models
-    model = WorldPredictorPro().to(DEVICE)
+    model = WorldPredictorPro()
     # 2. Print the summary safely on the CPU
     print("\n" + "=" * 50)
     summary(
         model,
-        input_size=[(BATCH_SIZE, 2048, 1024), (BATCH_SIZE, 2048, 1024)],
+        input_size=[(BATCH_SIZE, 2048, 1024), (BATCH_SIZE, 28)],
         depth=3,
     )
     print("=" * 50 + "\n")
+
+    model = model.to(DEVICE)
 
     # 2. Two Separate Wallets (Optimizers)
     # We give the Inverse Net a slightly higher LR so it stays smarter than the Predictor
@@ -171,10 +175,11 @@ def train():
         f"🚀 Training on {len(dataset)} transitions using {DEVICE} with Inverse Cycle..."
     )
 
+    best_pred_imp = 0
     for ep in range(EPOCHS):
         model.train()
 
-        total_loss_pred_only, total_base_pure_diff = 0, 0
+        total_loss_backprop, total_loss_pred_only, total_base_pure_diff = 0, 0, 0
 
         steps_taken = 0
         for z0, act, z1 in loader:
@@ -185,16 +190,45 @@ def train():
             # ==========================================
 
             with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
-                # 1. Predict the Hallucination
+                # Prediction and Raw element wise error
                 z1_pred = model(z0, act)
-                fwd_loss_pred_only = l1_criterion(z1_pred, z1)
+                raw_l1 = torch.abs(z1_pred - z1)
 
-                # 3. The 0.5 Leash
-                loss_backprop = fwd_loss_pred_only
+                # B. Build the Searchlight Mask
+                # We use no_grad() because we don't want to calculate gradients for the mask itself
+                with torch.no_grad():
+                    # Calculate how much each token ACTUALLY changed in the simulator
+                    # [Batch, 2048, 1] represents average change of each token.
+                    motion_magnitude = torch.abs(z1 - z0).mean(dim=-1, keepdim=True)
+
+                    # Base weight is 1.0. Moving parts get multiplied by up to 50x.
+                    weight_mask = 1.0 + (motion_magnitude * 50.0)
+
+                # C. Supercharge the Backprop
+                # multiply the change ... tokens that change more have their l1 score multiplied by 50x....
+                loss_backprop = (raw_l1 * weight_mask).mean()
+
+                # D. Honest Telemetry
+                # We calculate the normal unweighted L1 just for print statements,
+                fwd_loss_pred_only = raw_l1.mean()
+
+                # -----------------------------
+
+            # (loss_backprop).backward() will now use the supercharged gradients!
+            (loss_backprop).backward()
+
+            # OLD LOSS CALC
+            # # 1. Predict the Hallucination
+            # z1_pred = model(z0, act)
+            # fwd_loss_pred_only = l1_criterion(z1_pred, z1)
+
+            # loss_backprop = fwd_loss_pred_only
+
             # print("INPUTS", z0, act, z1)
             # print("OUTPUTS", fwd_loss_pred_only, pred_act_fake, pred_act_real)
 
-            (loss_backprop).backward()
+            # (loss_backprop).backward()
+
             if (steps_taken + 1) % ACCUM_BACKWARDS_STEPS == 0:
                 # Update only after certain number of steps
                 opt_predictor.step()
@@ -202,6 +236,7 @@ def train():
 
             # Tracking
             steps_taken += 1
+            total_loss_backprop += loss_backprop.item()
             total_loss_pred_only += fwd_loss_pred_only.item()
             total_base_pure_diff += l1_criterion(z0, z1).item()
 
@@ -220,6 +255,7 @@ def train():
         # TELEMETRY & REPORTING
         # ==========================================
         # print("STEPS TAKEN", steps_taken)
+        avg_loss_backprop = total_loss_backprop / steps_taken
         avg_loss_pred_only = total_loss_pred_only / steps_taken
         avg_base_pure_diff = total_base_pure_diff / steps_taken
 
@@ -227,6 +263,14 @@ def train():
         pred_imp = (
             (avg_base_pure_diff - avg_loss_pred_only) / avg_base_pure_diff
         ) * 100
+        if pred_imp > best_pred_imp:
+            best_pred_imp = pred_imp
+            checkpoint = {"model_state": model.state_dict()}
+            pct_str = f"{pred_imp:.2f}".replace(".", "_") + "_pct"
+            save_path = os.path.join("predictor_weights", f"world_model_{pct_str}.pth")
+
+            torch.save(checkpoint, save_path)
+            # print(f"🌟 New Best! Saved weights at {pred_imp:+.1f}% improvement.")
 
         # Time Metrics
         current_time = time.time()
@@ -236,18 +280,20 @@ def train():
 
         print(
             f"Epoch {ep:03d} | "
+            f"Loss_BackProp: {avg_loss_backprop:7.5f} | "
             f"Base: {avg_base_pure_diff:7.5f} | "
             f"Loss_Pred: {avg_loss_pred_only:7.5f} ({pred_imp:>+5.1f}%) | "
             f"Elapsed: {total_str} | "
             f"Time: {now} | "
             f"LR_m: {current_lr:.5f} | "
+            f"Scale: {model.delta_scale.item():.4f}"
         )
 
     # Save a combined checkpoint so you don't lose the auditor's brain
     checkpoint = {
         "model_state": model.state_dict(),
     }
-    torch.save(checkpoint, "world_model_with_cycle.pth")
+    torch.save(checkpoint, "world_model_masked.pth")
     print("✅ Model weights saved to world_model_with_cycle.pth")
 
 
