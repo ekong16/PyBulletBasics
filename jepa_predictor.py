@@ -156,26 +156,36 @@ class InverseDynamicsNet(nn.Module):
 
 
 class TransformerInverseNet(nn.Module):
-    def __init__(self, feature_dim=1024, hidden_dim=256, num_queries=8, action_dim=28):
+    def __init__(
+        self,
+        feature_dim=1024,
+        hidden_dim=256,
+        num_tokens=2048,
+        num_queries=8,
+        action_dim=28,
+    ):
         super().__init__()
 
-        # 1. THE COMPRESSOR (Squash 1024 -> 256 to save Mac memory)
+        # 1. THE MAP (1024 dims - perfectly matches the raw JEPA latents)
+        self.register_buffer("pos_embed", self._get_pos_embed(num_tokens, feature_dim))
+
+        # 2. THE INTERNAL GUARD (Normalizes the concatenated 2048-dim vector)
+        self.input_norm = nn.LayerNorm(feature_dim * 2)
+
+        # 3. THE COMPRESSOR (Shrink 2048 -> 256)
         self.compressor = nn.Linear(feature_dim * 2, hidden_dim)
 
-        # 2. THE 8 DETECTIVES (Learnable Queries)
+        # 4. THE 8 DETECTIVES
         self.readout_queries = nn.Parameter(torch.randn(1, num_queries, hidden_dim))
 
-        # 3. THE MATCHER & EXTRACTOR (Cross-Attention)
+        # 5. THE ATTENTION
         self.attention = nn.MultiheadAttention(
             embed_dim=hidden_dim, num_heads=4, batch_first=True
         )
 
-        # 4. THE BRAIN (Translates the 8 tokens into 28 torques)
-        # 8 queries * 256 dims = 2048 total inputs
-        mlp_input_dim = num_queries * hidden_dim
-
+        # 6. THE BRAIN
         self.mlp = nn.Sequential(
-            nn.Linear(mlp_input_dim, 512),
+            nn.Linear(num_queries * hidden_dim, 512),
             nn.LayerNorm(512),
             nn.GELU(),
             nn.Linear(512, 256),
@@ -184,45 +194,39 @@ class TransformerInverseNet(nn.Module):
             nn.Linear(256, action_dim),
         )
 
+    def _get_pos_embed(self, num_tokens, dim):
+        pe = torch.zeros(1, num_tokens, dim)
+        pos = torch.arange(num_tokens).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, dim, 2).float() * (-math.log(10000.0) / dim)
+        )
+        pe[0, :, 0::2] = torch.sin(pos * div_term)
+        pe[0, :, 1::2] = torch.cos(pos * div_term)
+        return pe
+
     def forward(self, z_0, z_1):
-        # INPUT SHAPES:
-        # z_0: [Batch, 2048, 1024] (The starting video frame latents)
-        # z_1: [Batch, 2048, 1024] (The ending video frame latents)
+        # 1. Stamp GPS coordinates on both frames INDEPENDENTLY
+        # This aligns them perfectly in physical space
+        z_0_stamped = z_0 + self.pos_embed.to(device=z_0.device, dtype=z_0.dtype)
+        z_1_stamped = z_1 + self.pos_embed.to(device=z_1.device, dtype=z_1.dtype)
 
-        # 1. Delete the static background room
-        # delta_z = z_1 - z_0
-        z_cat = torch.cat([z_0, z_1], dim=-1)
-        # SHAPE: [Batch, 2048, 1024]
-        # (Subtraction doesn't change the size, just the values)
+        # 2. Concatenate the spatially-aligned frames
+        z_cat = torch.cat([z_0_stamped, z_1_stamped], dim=-1)
 
-        # 2. Compress the video patches to save RAM
-        x = self.compressor(z_cat)
-        # SHAPE: [Batch, 2048, 256]
-        # (The 1024 features are squashed down to 256)
+        # 3. Normalize to protect the Attention mechanism from massive variance
+        x = self.input_norm(z_cat)
 
-        # 3. Photocopy the 8 Detectives for however many videos are in the batch
+        # 4. Compress 2048 -> 256
+        x = self.compressor(x)
+
+        # 5. Extract Evidence using the 8 Detectives
         B = x.size(0)
         q = self.readout_queries.expand(B, -1, -1)
-        # SHAPE: [Batch, 8, 256]
-        # (We expanded the '1' into 'B'. Now we have B sets of 8 detectives, each with a 256-D brain)
-
-        # 4. Match and Extract (The magic line)
-        # Query (q) searches Key (x), and extracts from Value (x)
         attn_out, _ = self.attention(query=q, key=x, value=x)
-        # SHAPE: [Batch, 8, 256]
-        # (The 2048 patches have been collapsed. Only the 8 extracted evidence tokens remain)
 
-        # 5. Lay the 8 tokens end-to-end into a single flat line
+        # 6. Flatten and Predict
         z_pooled = attn_out.flatten(start_dim=1)
-        # SHAPE: [Batch, 2048]
-        # (8 tokens * 256 features = 2048. We flattened the grid into a single 1D array for the MLP)
-
-        # 6. Predict the 28 joint torques
-        actions_pred = self.mlp(z_pooled)
-        # SHAPE OUTPUT: [Batch, 28]
-        # (The MLP reads the 2048 evidence array and outputs exactly 28 motor torques)
-
-        return actions_pred
+        return self.mlp(z_pooled)
 
 
 # --- 4. TRAINING LOOP ---
@@ -251,7 +255,8 @@ def train():
 
     l1_criterion = nn.L1Loss()
     # mse_criterion = nn.MSELoss()  # Actions usually use MSE
-    criterion_inv = nn.SmoothL1Loss(beta=0.1)
+    # criterion_inv = nn.SmoothL1Loss(beta=0.1)
+    criterion_inv = nn.L1Loss()
 
     start_training_time = time.time()
     print(
@@ -281,7 +286,7 @@ def train():
                 pred_act_real = inverse_net(z0, z1)
                 inv_loss = criterion_inv(pred_act_real, act)
 
-            (inv_loss / ACCUM_BACKWARDS_STEPS).backward()
+            (inv_loss).backward()
 
             if (steps_taken + 1) % ACCUM_BACKWARDS_STEPS == 0:
                 # Update only after certain number of steps
@@ -311,7 +316,7 @@ def train():
             # print("INPUTS", z0, act, z1)
             # print("OUTPUTS", fwd_loss_pred_only, pred_act_fake, pred_act_real)
 
-            (loss_backprop / ACCUM_BACKWARDS_STEPS).backward()
+            (loss_backprop).backward()
             if (steps_taken + 1) % ACCUM_BACKWARDS_STEPS == 0:
                 # Update only after certain number of steps
                 opt_predictor.step()
