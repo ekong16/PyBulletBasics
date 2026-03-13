@@ -109,3 +109,80 @@ Epoch 059 | Loss: 1.25008 | Base: 1.58969 | Progress: 21.4% | Avg Epoch: 563.02s
 
 gonna try the cycle next -- predict the action in addition to the next state ... and see if we can back out the action ...
 
+Cycle first pass -- max pooling seems to be a failure: 
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.65789 | Loss_Pred_Only: 1.48997 | Base: 1.58973 | Progress_pred_only:   6.3% | Loss_cyc (pred): 0.33584 | Inv Loss: 0.33783 | Elapsed: 00:11:49 | Time: 10:35:42 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 001 | Loss_Backprop: 1.56449 | Loss_Pred_Only: 1.39760 | Base: 1.58970 | Progress_pred_only:  12.1% | Loss_cyc (pred): 0.33377 | Inv Loss: 0.33460 | Elapsed: 00:22:42 | Time: 10:46:34 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 002 | Loss_Backprop: 1.53095 | Loss_Pred_Only: 1.36428 | Base: 1.58971 | Progress_pred_only:  14.2% | Loss_cyc (pred): 0.33333 | Inv Loss: 0.33390 | Elapsed: 00:33:41 | Time: 10:57:34 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 003 | Loss_Backprop: 1.51400 | Loss_Pred_Only: 1.34745 | Base: 1.58970 | Progress_pred_only:  15.2% | Loss_cyc (pred): 0.33311 | Inv Loss: 0.33349 | Elapsed: 00:45:01 | Time: 11:08:54 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 004 | Loss_Backprop: 1.50331 | Loss_Pred_Only: 1.33682 | Base: 1.58966 | Progress_pred_only:  15.9% | Loss_cyc (pred): 0.33298 | Inv Loss: 0.33321 | Elapsed: 00:56:09 | Time: 11:20:01 | LR_main: 0.00020 | LR_inv: 0.00039
+Epoch 005 | Loss_Backprop: 1.49596 | Loss_Pred_Only: 1.32956 | Base: 1.58968 | Progress_pred_only:  16.4% | Loss_cyc (pred): 0.33280 | Inv Loss: 0.33292 | Elapsed: 01:06:50 | Time: 11:30:43 | LR_main: 0.00020 | LR_inv: 0.00039
+Epoch 006 | Loss_Backprop: 1.49060 | Loss_Pred_Only: 1.32425 | Base: 1.58967 | Progress_pred_only:  16.7% | Loss_cyc (pred): 0.33269 | Inv Loss: 0.33275 | Elapsed: 01:17:58 | Time: 11:41:51 | LR_main: 0.00019 | LR_inv: 0.00039
+Epoch 007 | Loss_Backprop: 1.48630 | Loss_Pred_Only: 1.31995 | Base: 1.58971 | Progress_pred_only:  17.0% | Loss_cyc (pred): 0.33269 | Inv Loss: 0.33272 | Elapsed: 01:29:14 | Time: 11:53:06 | LR_main: 0.00019 | LR_inv: 0.00038
+Epoch 008 | Loss_Backprop: 1.48327 | Loss_Pred_Only: 1.31695 | Base: 1.58973 | Progress_pred_only:  17.2% | Loss_cyc (pred): 0.33264 | Inv Loss: 0.33265 | Elapsed: 01:40:19 | Time: 12:04:12 | LR_main: 0.00019 | LR_inv: 0.00038
+Epoch 009 | Loss_Backprop: 1.48099 | Loss_Pred_Only: 1.31469 | Base: 1.58969 | Progress_pred_only:  17.3% | Loss_cyc (pred): 0.33258 | Inv Loss: 0.33258 | Elapsed: 01:51:01 | Time: 12:14:54 | LR_main: 0.00019 | LR_inv: 0.00037
+Epoch 010 | Loss_Backprop: 1.47882 | Loss_Pred_Only: 1.31254 | Base: 1.58975 | Progress_pred_only:  17.4% | Loss_cyc (pred): 0.33257 | Inv Loss: 0.33258 | Elapsed: 02:01:44 | Time: 12:25:36 | LR_main: 0.00018 | LR_inv: 0.00037
+Epoch 011 | Loss_Backprop: 1.47693 | Loss_Pred_Only: 1.31062 | Base: 1.58971 | Progress_pred_only:  17.6% | Loss_cyc (pred): 0.33261 | Inv Loss: 0.33257 | Elapsed: 02:12:27 | Time: 12:36:20 | LR_main: 0.00018 | LR_inv: 0.00036
+Epoch 012 | Loss_Backprop: 1.47522 | Loss_Pred_Only: 1.30892 | Base: 1.58978 | Progress_pred_only:  17.7% | Loss_cyc (pred): 0.33261 | Inv Loss: 0.33258 | Elapsed: 02:23:10 | Time: 12:47:03 | LR_main: 0.00018 | LR_inv: 0.00036
+Epoch 013 | Loss_Backprop: 1.47366 | Loss_Pred_Only: 1.30738 | Base: 1.58977 | Progress_pred_only:  17.8% | Loss_cyc (pred): 0.33257 | Inv Loss: 0.33252 | Elapsed: 02:33:53 | Time: 12:57:46 | LR_main: 0.00018 | LR_inv: 0.00035
+Epoch 014 | Loss_Backprop: 1.47220 | Loss_Pred_Only: 1.30590 | Base: 1.58974 | Progress_pred_only:  17.9% | Loss_cyc (pred): 0.33259 | Inv Loss: 0.33257 | Elapsed: 02:44:30 | Time: 13:08:23 | LR_main: 0.00017 | LR_inv: 0.00034
+Epoch 015 | Loss_Backprop: 1.47110 | Loss_Pred_Only: 1.30482 | Base: 1.58974 | Progress_pred_only:  17.9% | Loss_cyc (pred): 0.33256 | Inv Loss: 0.33249 | Elapsed: 02:55:00 | Time: 13:18:52 | LR_main: 0.00017 | LR_inv: 0.00034
+
+Ok now using cross attention pooling -- seems to work ... but LR too low...
+  warnings.warn(
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.67677 | Loss_Pred_Only: 1.51033 | Base: 1.58975 | Progress_pred_only:   5.0% | Loss_cyc (pred): 0.33289 | Inv Loss: 0.33981 | Elapsed: 00:11:37 | Time: 15:16:56 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 001 | Loss_Backprop: 1.57918 | Loss_Pred_Only: 1.41348 | Base: 1.58968 | Progress_pred_only:  11.1% | Loss_cyc (pred): 0.33140 | Inv Loss: 0.33452 | Elapsed: 00:23:34 | Time: 15:28:54 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 002 | Loss_Backprop: 1.54644 | Loss_Pred_Only: 1.38336 | Base: 1.58967 | Progress_pred_only:  13.0% | Loss_cyc (pred): 0.32615 | Inv Loss: 0.33301 | Elapsed: 00:35:37 | Time: 15:40:57 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 003 | Loss_Backprop: 1.53719 | Loss_Pred_Only: 1.37444 | Base: 1.58972 | Progress_pred_only:  13.5% | Loss_cyc (pred): 0.32549 | Inv Loss: 0.33220 | Elapsed: 00:47:30 | Time: 15:52:50 | LR_main: 0.00020 | LR_inv: 0.00040
+Epoch 004 | Loss_Backprop: 1.52412 | Loss_Pred_Only: 1.36140 | Base: 1.58978 | Progress_pred_only:  14.4% | Loss_cyc (pred): 0.32545 | Inv Loss: 0.33140 | Elapsed: 00:59:42 | Time: 16:05:02 | LR_main: 0.00020 | LR_inv: 0.00039
+
+LR set to 3e-4, and the inv net lr set to 5x (vs 2e04 and 2x before)
+
+Doesnt work... 
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.61796 | Base: 1.58971 | Loss_Pred: 1.44972 ( +8.8%) | Loss_Cyc: 0.33648 ( -1.0%) | Inv Loss: 0.33969 ( -2.0%) | Elapsed: 00:11:47 | Time: 16:22:57 | LR_m: 0.00030 | LR_i: 0.00150
+Epoch 001 | Loss_Backprop: 1.54621 | Base: 1.58966 | Loss_Pred: 1.37966 (+13.2%) | Loss_Cyc: 0.33311 ( -0.0%) | Inv Loss: 0.33383 ( -0.2%) | Elapsed: 00:23:25 | Time: 16:34:36 | LR_m: 0.00030 | LR_i: 0.00150
+Epoch 002 | Loss_Backprop: 1.53163 | Base: 1.58979 | Loss_Pred: 1.36519 (+14.1%) | Loss_Cyc: 0.33288 ( +0.0%) | Inv Loss: 0.33362 ( -0.2%) | Elapsed: 00:34:50 | Time: 16:46:01 | LR_m: 0.00030 | LR_i: 0.00149
+
+Try concat Z_0 and Z_1 isntead ... 
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.57804 | Base: 1.58976 | Loss_Pred: 1.40963 (+11.3%) | Loss_Cyc: 0.33681 ( -1.1%) | Inv Loss: 0.34059 ( -2.3%) | Elapsed: 00:12:22 | Time: 17:10:27 | LR_m: 0.00030 | LR_i: 0.00150
+Epoch 001 | Loss_Backprop: 1.52111 | Base: 1.58969 | Loss_Pred: 1.35459 (+14.8%) | Loss_Cyc: 0.33304 ( -0.0%) | Inv Loss: 0.33376 ( -0.2%) | Elapsed: 00:24:26 | Time: 17:22:32 | LR_m: 0.00030 | LR_i: 0.00150
+Epoch 002 | Loss_Backprop: 1.50640 | Base: 1.58980 | Loss_Pred: 1.33996 (+15.7%) | Loss_Cyc: 0.33288 ( +0.0%) | Inv Loss: 0.33358 ( -0.2%) | Elapsed: 00:37:18 | Time: 17:35:24 | LR_m: 0.00030 | LR_i: 0.00149
+
+-- No difference ... gonna try using SmoothL1 (huber loss) instead.... 
+
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+STEPS TAKEN 2080
+Epoch 000 | Loss_Backprop: 1.63608 | Base: 1.58967 | Loss_Pred: 1.40900 (+11.4%) | Loss_Cyc: 0.45416 ( +9.2%) | Inv Loss: 0.45726 ( +8.5%) | Elapsed: 00:12:02 | Time: 18:03:48 | LR_m: 0.00030 | LR_i: 0.00090
+STEPS TAKEN 2080
+Epoch 001 | Loss_Backprop: 1.57840 | Base: 1.58978 | Loss_Pred: 1.35261 (+14.9%) | Loss_Cyc: 0.45156 ( +9.7%) | Inv Loss: 0.45221 ( +9.6%) | Elapsed: 00:24:36 | Time: 18:16:22 | LR_m: 0.00030 | LR_i: 0.00090
+STEPS TAKEN 2080
+Epoch 002 | Loss_Backprop: 1.56223 | Base: 1.58970 | Loss_Pred: 1.33654 (+15.9%) | Loss_Cyc: 0.45139 ( +9.7%) | Inv Loss: 0.45188 ( +9.6%) | Elapsed: 00:36:43 | Time: 18:28:28 | LR_m: 0.00030 | LR_i: 0.00089
+STEPS TAKEN 2080
+Epoch 003 | Loss_Backprop: 1.54827 | Base: 1.58972 | Loss_Pred: 1.32264 (+16.8%) | Loss_Cyc: 0.45127 ( +9.7%) | Inv Loss: 0.45173 ( +9.7%) | Elapsed: 00:48:32 | Time: 18:40:18 | LR_m: 0.00030 | LR_i: 0.00089
+STEPS TAKEN 2080
+Epoch 004 | Loss_Backprop: 1.53841 | Base: 1.58973 | Loss_Pred: 1.31276 (+17.4%) | Loss_Cyc: 0.45129 ( +9.7%) | Inv Loss: 0.45169 ( +9.7%) | Elapsed: 01:00:50 | Time: 18:52:36 | LR_m: 0.00030 | LR_i: 0.00088
+STEPS TAKEN 2080
+Epoch 005 | Loss_Backprop: 1.53161 | Base: 1.58972 | Loss_Pred: 1.30602 (+17.8%) | Loss_Cyc: 0.45118 ( +9.8%) | Inv Loss: 0.45157 ( +9.7%) | Elapsed: 01:13:12 | Time: 19:04:58 | LR_m: 0.00029 | LR_i: 0.00088
+STEPS TAKEN 2080
+Epoch 006 | Loss_Backprop: 1.52674 | Base: 1.58974 | Loss_Pred: 1.30114 (+18.2%) | Loss_Cyc: 0.45118 ( +9.8%) | Inv Loss: 0.45153 ( +9.7%) | Elapsed: 01:25:00 | Time: 19:16:46 | LR_m: 0.00029 | LR_i: 0.00087
+STEPS TAKEN 2080
+Epoch 007 | Loss_Backprop: 1.52287 | Base: 1.58971 | Loss_Pred: 1.29729 (+18.4%) | Loss_Cyc: 0.45116 ( +9.8%) | Inv Loss: 0.45146 ( +9.7%) | Elapsed: 01:36:50 | Time: 19:28:35 | LR_m: 0.00029 | LR_i: 0.00086
+STEPS TAKEN 2080
+Epoch 008 | Loss_Backprop: 1.51993 | Base: 1.58972 | Loss_Pred: 1.29430 (+18.6%) | Loss_Cyc: 0.45125 ( +9.7%) | Inv Loss: 0.45155 ( +9.7%) | Elapsed: 01:48:38 | Time: 19:40:24 | LR_m: 0.00028 | LR_i: 0.00085
+STEPS TAKEN 2080
+Epoch 009 | Loss_Backprop: 1.51754 | Base: 1.58968 | Loss_Pred: 1.29191 (+18.7%) | Loss_Cyc: 0.45126 ( +9.7%) | Inv Loss: 0.45152 ( +9.7%) | Elapsed: 02:00:27 | Time: 19:52:12 | LR_m: 0.00028 | LR_i: 0.00084
+STEPS TAKEN 2080
+Epoch 010 | Loss_Backprop: 1.51515 | Base: 1.58970 | Loss_Pred: 1.28954 (+18.9%) | Loss_Cyc: 0.45121 ( +9.8%) | Inv Loss: 0.45148 ( +9.7%) | Elapsed: 02:12:18 | Time: 20:04:03 | LR_m: 0.00028 | LR_i: 0.00083
+STEPS TAKEN 2080
+Epoch 011 | Loss_Backprop: 1.51344 | Base: 1.58970 | Loss_Pred: 1.28782 (+19.0%) | Loss_Cyc: 0.45123 ( +9.8%) | Inv Loss: 0.45145 ( +9.7%) | Elapsed: 02:24:08 | Time: 20:15:54 | LR_m: 0.00027 | LR_i: 0.00082
+STEPS TAKEN 2080
+Epoch 012 | Loss_Backprop: 1.51190 | Base: 1.58969 | Loss_Pred: 1.28629 (+19.1%) | Loss_Cyc: 0.45121 ( +9.8%) | Inv Loss: 0.45145 ( +9.7%) | Elapsed: 02:35:55 | Time: 20:27:41 | LR_m: 0.00027 | LR_i: 0.00080
+STEPS TAKEN 2080
+Epoch 013 | Loss_Backprop: 1.51028 | Base: 1.58966 | Loss_Pred: 1.28468 (+19.2%) | Loss_Cyc: 0.45119 ( +9.8%) | Inv Loss: 0.45141 ( +9.7%) | Elapsed: 02:47:46 | Time: 20:39:32 | LR_m: 0.00026 | LR_i: 0.00079
+STEPS TAKEN 2080
+Epoch 014 | Loss_Backprop: 1.50877 | Base: 1.58971 | Loss_Pred: 1.28316 (+19.3%) | Loss_Cyc: 0.45121 ( +9.8%) | Inv Loss: 0.45143 ( +9.7%) | Elapsed: 02:59:27 | Time: 20:51:13 | LR_m: 0.00026 | LR_i: 0.00077
+
+Ok definitely better than before ... but still stagnating esp the "teacher" ... gonna try to do virtual batching.

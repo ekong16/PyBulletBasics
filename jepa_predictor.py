@@ -13,8 +13,9 @@ import time
 # --- 1. CONFIGURATION ---
 LATENT_DIR = "world_model_latents"
 BATCH_SIZE = 2  # [B] - Keep small to spare your RAM
+ACCUM_BACKWARDS_STEPS = 16
 EPOCHS = 60
-LR = 2e-4
+LR = 3e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
 
@@ -159,7 +160,7 @@ class TransformerInverseNet(nn.Module):
         super().__init__()
 
         # 1. THE COMPRESSOR (Squash 1024 -> 256 to save Mac memory)
-        self.compressor = nn.Linear(feature_dim, hidden_dim)
+        self.compressor = nn.Linear(feature_dim * 2, hidden_dim)
 
         # 2. THE 8 DETECTIVES (Learnable Queries)
         self.readout_queries = nn.Parameter(torch.randn(1, num_queries, hidden_dim))
@@ -189,12 +190,13 @@ class TransformerInverseNet(nn.Module):
         # z_1: [Batch, 2048, 1024] (The ending video frame latents)
 
         # 1. Delete the static background room
-        delta_z = z_1 - z_0
+        # delta_z = z_1 - z_0
+        z_cat = torch.cat([z_0, z_1], dim=-1)
         # SHAPE: [Batch, 2048, 1024]
         # (Subtraction doesn't change the size, just the values)
 
         # 2. Compress the video patches to save RAM
-        x = self.compressor(delta_z)
+        x = self.compressor(z_cat)
         # SHAPE: [Batch, 2048, 256]
         # (The 1024 features are squashed down to 256)
 
@@ -236,7 +238,7 @@ def train():
     # We give the Inverse Net a slightly higher LR so it stays smarter than the Predictor
     opt_predictor = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=0.01)
     opt_inverse = torch.optim.AdamW(
-        inverse_net.parameters(), lr=LR * 2, weight_decay=0.01
+        inverse_net.parameters(), lr=LR * 3, weight_decay=0.01
     )
 
     # Anneal both schedules
@@ -248,7 +250,8 @@ def train():
     )
 
     l1_criterion = nn.L1Loss()
-    mse_criterion = nn.MSELoss()  # Actions usually use MSE
+    # mse_criterion = nn.MSELoss()  # Actions usually use MSE
+    criterion_inv = nn.SmoothL1Loss(beta=0.1)
 
     start_training_time = time.time()
     print(
@@ -267,24 +270,31 @@ def train():
             total_loss_backprop,
         ) = 0, 0, 0, 0, 0
 
+        steps_taken = 0
         for z0, act, z1 in loader:
             z0, act, z1 = z0.to(DEVICE), act.to(DEVICE), z1.to(DEVICE)
-
             # ==========================================
             # PHASE 1: TRAIN THE DETECTIVE (Reality Only)
             # ==========================================
             with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
                 # .detach() is critical here to prevent cross-contamination
                 pred_act_real = inverse_net(z0, z1)
-                inv_loss = mse_criterion(pred_act_real, act)
+                inv_loss = criterion_inv(pred_act_real, act)
 
-            opt_inverse.zero_grad()
-            inv_loss.backward()
-            opt_inverse.step()
+            (inv_loss / ACCUM_BACKWARDS_STEPS).backward()
+
+            if (steps_taken + 1) % ACCUM_BACKWARDS_STEPS == 0:
+                # Update only after certain number of steps
+                opt_inverse.step()
+                opt_inverse.zero_grad()
 
             # ==========================================
             # PHASE 2: TRAIN THE PREDICTOR (Cycle Loss)
             # ==========================================
+            # 1. Freeze the Teacher so it doesn't learn from hallucinations
+            for param in inverse_net.parameters():
+                param.requires_grad = False
+
             with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
                 # 1. Predict the Hallucination
                 z1_pred = model(z0, act)
@@ -293,21 +303,39 @@ def train():
                 # 2. Interrogate the Hallucination
                 # No .detach() on z1_pred because gradients MUST flow back to the Predictor
                 pred_act_fake = inverse_net(z0, z1_pred)
-                cyc_loss = mse_criterion(pred_act_fake, act)
+                cyc_loss = criterion_inv(pred_act_fake, act)
 
                 # 3. The 0.5 Leash
                 loss_backprop = fwd_loss_pred_only + (0.5 * cyc_loss)
 
-            opt_predictor.zero_grad()
-            loss_backprop.backward()
-            opt_predictor.step()
+            # print("INPUTS", z0, act, z1)
+            # print("OUTPUTS", fwd_loss_pred_only, pred_act_fake, pred_act_real)
+
+            (loss_backprop / ACCUM_BACKWARDS_STEPS).backward()
+            if (steps_taken + 1) % ACCUM_BACKWARDS_STEPS == 0:
+                # Update only after certain number of steps
+                opt_predictor.step()
+                opt_predictor.zero_grad()
+
+            # 2. Unfreeze the Teacher for the next loop's Phase 1
+            for param in inverse_net.parameters():
+                param.requires_grad = True
 
             # Tracking
+            steps_taken += 1
             total_loss_inv += inv_loss.item()
             total_loss_pred_only += fwd_loss_pred_only.item()
             total_loss_cyc_fake_only += cyc_loss.item()
             total_loss_backprop += loss_backprop.item()
             total_base_pure_diff += l1_criterion(z0, z1).item()
+
+            # break
+        # Flush any remaining accumulated gradients at the end of the epoch
+        if steps_taken % ACCUM_BACKWARDS_STEPS != 0:
+            opt_inverse.step()
+            opt_predictor.step()
+            opt_inverse.zero_grad()
+            opt_predictor.zero_grad()
 
         # Step both schedules
         sched_predictor.step()
@@ -318,43 +346,43 @@ def train():
         # ==========================================
         # TELEMETRY & REPORTING
         # ==========================================
-        # if ep %  == 0 or ep == (EPOCHS - 1):
-        avg_loss_inv = total_loss_inv / len(loader)
-        avg_loss_pred_only = total_loss_pred_only / len(loader)
-        avg_loss_cyc_fake_only = total_loss_cyc_fake_only / len(loader)
-        avg_base_pure_diff = total_base_pure_diff / len(loader)
-        avg_loss_backprop = total_loss_backprop / len(loader)
+        # print("STEPS TAKEN", steps_taken)
+        avg_loss_inv = total_loss_inv / steps_taken
+        avg_loss_pred_only = total_loss_pred_only / steps_taken
+        avg_loss_cyc_fake_only = total_loss_cyc_fake_only / steps_taken
+        avg_base_pure_diff = total_base_pure_diff / steps_taken
+        avg_loss_backprop = total_loss_backprop / steps_taken
 
-        # Forward Improvement (%)
-        pred_only_improvement = (
+        # 1. Predictor Improvement (vs. doing nothing)
+        pred_imp = (
             (avg_base_pure_diff - avg_loss_pred_only) / avg_base_pure_diff
         ) * 100
 
-        # Action Consistency Improvement (%)
-        # Assuming actions are roughly -1 to 1, random guessing yields an MSE of ~0.33
-        cyc_imp = ((0.333 - avg_loss_cyc_fake_only) / 0.333) * 100
+        # 2. Cycle Consistency Improvement (vs. 0.333 random guessing)
+        #        cyc_imp = ((0.333 - avg_loss_cyc_fake_only) / 0.333) * 100
+        cyc_imp = ((0.5 - avg_loss_cyc_fake_only) / 0.5) * 100
+
+        # 3. Inverse Net Improvement (vs. 0.333 random guessing)
+        #        inv_imp = ((0.333 - avg_loss_inv) / 0.333) * 100
+        inv_imp = ((0.5 - avg_loss_inv) / 0.5) * 100
 
         # Time Metrics
         current_time = time.time()
         elapsed_total = current_time - start_training_time
-        avg_epoch_time = elapsed_total / (ep + 1)
         total_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_total))
-        # avg_str = f"{avg_epoch_time:.2f}s"
         now = datetime.now().replace(microsecond=0).strftime("%H:%M:%S")
 
         print(
             f"Epoch {ep:03d} | "
             f"Loss_Backprop: {avg_loss_backprop:7.5f} | "
-            f"Loss_Pred_Only: {avg_loss_pred_only:7.5f} | "  # 7 chars wide total
             f"Base: {avg_base_pure_diff:7.5f} | "
-            f"Progress_pred_only: {pred_only_improvement:>5.1f}% | "  # >6 right-aligns to 6 chars (e.g. '  9.5')
-            f"Loss_cyc (pred): {avg_loss_cyc_fake_only:7.5f} | "
-            f"Inv Loss: {avg_loss_inv:7.5f} | "
-            # f"Avg Ep Time: {avg_epoch_time:>5.1f}s | "  # Use the raw float here, not avg_str!
-            f"Elapsed: {total_str} | "  # HH:MM:SS is naturally fixed width
+            f"Loss_Pred: {avg_loss_pred_only:7.5f} ({pred_imp:>+5.1f}%) | "
+            f"Loss_Cyc: {avg_loss_cyc_fake_only:7.5f} ({cyc_imp:>+5.1f}%) | "
+            f"Inv Loss: {avg_loss_inv:7.5f} ({inv_imp:>+5.1f}%) | "
+            f"Elapsed: {total_str} | "
             f"Time: {now} | "
-            f"LR_main: {current_lr:.5f} | "
-            f"LR_inv: {current_lr_inv:.5f}"
+            f"LR_m: {current_lr:.5f} | "
+            f"LR_i: {current_lr_inv:.5f}"
         )
 
     # Save a combined checkpoint so you don't lose the auditor's brain
