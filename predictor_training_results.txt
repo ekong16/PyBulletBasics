@@ -264,3 +264,111 @@ Epoch 050 | Loss_Backprop: 1.54604 | Base: 1.58972 | Loss_Pred: 1.29637 (+18.5%)
 Epoch 051 | Loss_Backprop: 1.54585 | Base: 1.58969 | Loss_Pred: 1.29618 (+18.5%) | Loss_Cyc: 0.49935 ( +0.1%) | Inv Loss: 0.49935 ( +0.1%) | Elapsed: 09:46:30 | Time: 10:29:36 | LR_m: 0.00002 | LR_i: 0.00005
 
 Absolutely no learning for the inverse net ..
+
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.76111 | Base: 1.58974 | Loss_Pred: 1.50707 ( +5.2%) | Loss_Cyc: 0.50808 ( -1.6%) | Inv Loss: 0.50826 ( -1.7%) | Elapsed: 00:12:07 | Time: 10:59:10 | LR_m: 0.00030 | LR_i: 0.00090
+Epoch 001 | Loss_Backprop: 1.68377 | Base: 1.58979 | Loss_Pred: 1.43241 ( +9.9%) | Loss_Cyc: 0.50273 ( -0.5%) | Inv Loss: 0.50281 ( -0.6%) | Elapsed: 00:24:23 | Time: 11:11:26 | LR_m: 0.00030 | LR_i: 0.00090
+
+No improvement... Gonna try 32 queries.
+32 queries no improvement...
+🚀 Training on 4159 transitions using mps with Inverse Cycle...
+Epoch 000 | Loss_Backprop: 1.76186 | Base: 1.58969 | Loss_Pred: 1.50775 ( +5.2%) | Loss_Cyc: 0.50821 ( -1.6%) | Inv Loss: 0.50846 ( -1.7%) | Elapsed: 00:11:43 | Time: 11:27:20 | LR_m: 0.00030 | LR_i: 0.00090
+Epoch 001 | Loss_Backprop: 1.68488 | Base: 1.58967 | Loss_Pred: 1.43359 ( +9.8%) | Loss_Cyc: 0.50257 ( -0.5%) | Inv Loss: 0.50265 ( -0.5%) | Elapsed: 00:24:38 | Time: 11:40:15 | LR_m: 0.00030 | LR_i: 0.00090
+
+
+Gonna try training the teacher only first ...
+
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.99339, max=0.98284
+   Teacher Prediction Range : min=-0.56543, max=0.68750
+   Initial Loss: 0.59545
+
+Epoch 000 | Inv Loss: 0.50797 ( -1.6%) | Elapsed: 00:01:41 | Time: 11:53:34 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.50289 ( -0.6%) | Elapsed: 00:03:16 | Time: 11:55:09 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.50159 ( -0.3%) | Elapsed: 00:05:00 | Time: 11:56:53 | LR_i: 0.00089
+Epoch 003 | Inv Loss: 0.50100 ( -0.2%) | Elapsed: 00:06:45 | Time: 11:58:38 | LR_i: 0.00089
+Epoch 004 | Inv Loss: 0.50048 ( -0.1%) | Elapsed: 00:08:25 | Time: 12:00:18 | LR_i: 0.00088
+Epoch 005 | Inv Loss: 0.50065 ( -0.1%) | Elapsed: 00:10:01 | Time: 12:01:53 | LR_i: 0.00088
+Epoch 006 | Inv Loss: 0.50043 ( -0.1%) | Elapsed: 00:11:30 | Time: 12:03:23 | LR_i: 0.00087
+
+...Doesnt seem to be learning well... doing a mean to decrease size of first mlp layer... 
+
+learning quite slowly...
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.96207, max=0.99975
+   Teacher Prediction Range : min=-0.91113, max=0.71582
+   Initial Loss: 0.55282
+
+Epoch 000 | Inv Loss: 0.50666 ( -1.3%) | Elapsed: 00:01:34 | Time: 12:05:56 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.50262 ( -0.5%) | Elapsed: 00:02:59 | Time: 12:07:21 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.50193 ( -0.4%) | Elapsed: 00:04:23 | Time: 12:08:45 | LR_i: 0.00089
+Epoch 003 | Inv Loss: 0.50141 ( -0.3%) | Elapsed: 00:05:47 | Time: 12:10:09 | LR_i: 0.00089
+Epoch 004 | Inv Loss: 0.50107 ( -0.2%) | Elapsed: 00:07:14 | Time: 12:11:36 | LR_i: 0.00088
+Epoch 005 | Inv Loss: 0.50088 ( -0.2%) | Elapsed: 00:08:45 | Time: 12:13:07 | LR_i: 0.00088
+Epoch 006 | Inv Loss: 0.50074 ( -0.1%) | Elapsed: 00:10:16 | Time: 12:14:38 | LR_i: 0.00087
+Epoch 007 | Inv Loss: 0.50049 ( -0.1%) | Elapsed: 00:11:51 | Time: 12:16:14 | LR_i: 0.00086
+Epoch 008 | Inv Loss: 0.50029 ( -0.1%) | Elapsed: 00:13:22 | Time: 12:17:45 | LR_i: 0.00085
+Epoch 009 | Inv Loss: 0.50020 ( -0.0%) | Elapsed: 00:15:01 | Time: 12:19:23 | LR_i: 0.00084
+Epoch 010 | Inv Loss: 0.50007 ( -0.0%) | Elapsed: 00:16:36 | Time: 12:20:58 | LR_i: 0.00083
+
+Stagnation again...
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.96795, max=0.96152
+   Teacher Prediction Range : min=-0.47266, max=0.49316
+   Initial Loss: 0.53022
+
+Epoch 000 | Inv Loss: 0.51178 ( -2.4%) | Elapsed: 00:01:44 | Time: 12:23:38 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.50058 ( -0.1%) | Elapsed: 00:03:28 | Time: 12:25:22 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.49974 ( +0.1%) | Elapsed: 00:05:10 | Time: 12:27:04 | LR_i: 0.00089
+Epoch 003 | Inv Loss: 0.49975 ( +0.1%) | Elapsed: 00:06:56 | Time: 12:28:50 | LR_i: 0.00089
+Epoch 004 | Inv Loss: 0.49968 ( +0.1%) | Elapsed: 00:08:41 | Time: 12:30:35 | LR_i: 0.00088
+Epoch 005 | Inv Loss: 0.49970 ( +0.1%) | Elapsed: 00:10:29 | Time: 12:32:23 | LR_i: 0.00088
+Epoch 006 | Inv Loss: 0.49976 ( +0.0%) | Elapsed: 00:12:23 | Time: 12:34:17 | LR_i: 0.00087
+
+Stagnation ... but at least making more progress... gonna try inputing starting state and diff instead of 
+z0 and z1...
+
+ok still stagnation...
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.96206, max=0.99991
+   Teacher Prediction Range : min=-0.44604, max=0.30933
+   Initial Loss: 0.60527
+
+Epoch 000 | Inv Loss: 0.51056 ( -2.1%) | Elapsed: 00:01:40 | Time: 12:36:48 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.50175 ( -0.3%) | Elapsed: 00:03:24 | Time: 12:38:31 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.49986 ( +0.0%) | Elapsed: 00:04:55 | Time: 12:40:02 | LR_i: 0.00089
+Epoch 003 | Inv Loss: 0.49984 ( +0.0%) | Elapsed: 00:06:24 | Time: 12:41:31 | LR_i: 0.00089
+Epoch 004 | Inv Loss: 0.49966 ( +0.1%) | Elapsed: 00:08:05 | Time: 12:43:12 | LR_i: 0.00088
+Epoch 005 | Inv Loss: 0.49962 ( +0.1%) | Elapsed: 00:09:50 | Time: 12:44:57 | LR_i: 0.00088
+
+gonna try mse now ...
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.94275, max=0.94990
+   Teacher Prediction Range : min=-0.55371, max=0.44897
+   Initial Loss: 0.41076
+
+Epoch 000 | Inv Loss: 0.34977 (+30.0%) | Elapsed: 00:01:50 | Time: 12:49:00 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.33383 (+33.2%) | Elapsed: 00:03:36 | Time: 12:50:46 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.33305 (+33.4%) | Elapsed: 00:05:19 | Time: 12:52:29 | LR_i: 0.00089
+Epoch 003 | Inv Loss: 0.33293 (+33.4%) | Elapsed: 00:07:03 | Time: 12:54:13 | LR_i: 0.00089
+Epoch 004 | Inv Loss: 0.33288 (+33.4%) | Elapsed: 00:09:08 | Time: 12:56:18 | LR_i: 0.00088
+Epoch 005 | Inv Loss: 0.33278 (+33.4%) | Elapsed: 00:10:41 | Time: 12:57:51 | LR_i: 0.00088
+Epoch 006 | Inv Loss: 0.33284 (+33.4%) | Elapsed: 00:12:12 | Time: 12:59:22 | LR_i: 0.00087
+Epoch 007 | Inv Loss: 0.33279 (+33.4%) | Elapsed: 00:13:43 | Time: 13:00:53 | LR_i: 0.00086
+still stagnant training...
+
+I think the inverse direction is a total failure ... here is a transformer architecture attempting to predict the actions
+🚀 ISOLATED TEACHER TRAINING on 4159 transitions using mps...
+🔍 DEBUG SIGNAL CHECK:
+   Ground Truth Action Range: min=-0.86123, max=0.88836
+   Teacher Prediction Range : min=-0.39722, max=0.38330
+   Initial Loss: 0.50831
+
+Epoch 000 | Inv Loss: 0.50583 ( -1.2%) | Elapsed: 00:10:28 | Time: 13:18:23 | LR_i: 0.00090
+Epoch 001 | Inv Loss: 0.50006 ( -0.0%) | Elapsed: 00:20:35 | Time: 13:28:30 | LR_i: 0.00090
+Epoch 002 | Inv Loss: 0.49955 ( +0.1%) | Elapsed: 00:31:18 | Time: 13:39:13 | LR_i: 0.00089
