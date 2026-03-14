@@ -430,3 +430,40 @@ Epoch 012 | Loss_BackProp: 136.79081 | Base: 1.59536 | Loss_Pred: 1.40900 (+11.7
 Epoch 013 | Loss_BackProp: 136.20248 | Base: 1.59536 | Loss_Pred: 1.40448 (+12.0%) | Elapsed: 00:15:12 | Time: 16:33:07 | LR_m: 0.00052 | Scale: 0.2987
 Epoch 014 | Loss_BackProp: 135.62947 | Base: 1.59536 | Loss_Pred: 1.39962 (+12.3%) | Elapsed: 00:16:22 | Time: 16:34:16 | LR_m: 0.00051 | Scale: 0.3075
 Epoch 015 | Loss_BackProp: 135.11004 | Base: 1.59536 | Loss_Pred: 1.39521 (+12.5%) | Elapsed: 00:17:29 | Time: 16:35:23 | LR_m: 0.00050 | Scale: 0.3164
+
+OK beautiful progression here ...
+🚀 Training on 4159 transitions using mps
+Epoch 000 | Loss_BackProp: 156.67318 | Base: 1.58967 | Loss_Pred: 1.55665 ( +2.1%) | Elapsed: 00:10:57 | Time: 16:54:27 | LR_m: 0.00030 | Scale: 0.1384
+Epoch 001 | Loss_BackProp: 147.69420 | Base: 1.58979 | Loss_Pred: 1.49401 ( +6.0%) | Elapsed: 00:21:56 | Time: 17:05:27 | LR_m: 0.00030 | Scale: 0.1702
+Epoch 002 | Loss_BackProp: 143.60203 | Base: 1.58970 | Loss_Pred: 1.46207 ( +8.0%) | Elapsed: 00:33:44 | Time: 17:17:15 | LR_m: 0.00030 | Scale: 0.1968
+Epoch 003 | Loss_BackProp: 140.97830 | Base: 1.58976 | Loss_Pred: 1.44156 ( +9.3%) | Elapsed: 00:45:28 | Time: 17:28:59 | LR_m: 0.00030 | Scale: 0.2210
+Epoch 004 | Loss_BackProp: 138.99810 | Base: 1.58981 | Loss_Pred: 1.42573 (+10.3%) | Elapsed: 00:57:09 | Time: 17:40:40 | LR_m: 0.00030 | Scale: 0.2433
+Epoch 005 | Loss_BackProp: 137.40323 | Base: 1.58971 | Loss_Pred: 1.41276 (+11.1%) | Elapsed: 01:07:48 | Time: 17:51:19 | LR_m: 0.00029 | Scale: 0.2644
+Epoch 006 | Loss_BackProp: 136.09168 | Base: 1.58969 | Loss_Pred: 1.40206 (+11.8%) | Elapsed: 01:18:15 | Time: 18:01:46 | LR_m: 0.00029 | Scale: 0.2840
+Epoch 007 | Loss_BackProp: 135.01814 | Base: 1.58974 | Loss_Pred: 1.39323 (+12.4%) | Elapsed: 01:28:38 | Time: 18:12:09 | LR_m: 0.00029 | Scale: 0.3024
+Epoch 008 | Loss_BackProp: 134.08540 | Base: 1.58966 | Loss_Pred: 1.38570 (+12.8%) | Elapsed: 01:39:00 | Time: 18:22:31 | LR_m: 0.00028 | Scale: 0.3200
+Epoch 009 | Loss_BackProp: 133.33088 | Base: 1.58969 | Loss_Pred: 1.37963 (+13.2%) | Elapsed: 01:49:22 | Time: 18:32:53 | LR_m: 0.00028 | Scale: 0.3368
+Epoch 010 | Loss_BackProp: 132.66786 | Base: 1.58982 | Loss_Pred: 1.37427 (+13.6%) | Elapsed: 02:00:46 | Time: 18:44:17 | LR_m: 0.00028 | Scale: 0.3529
+Epoch 011 | Loss_BackProp: 132.04666 | Base: 1.58972 | Loss_Pred: 1.36957 (+13.8%) | Elapsed: 02:11:26 | Time: 18:54:57 | LR_m: 0.00027 | Scale: 0.3681
+Epoch 012 | Loss_BackProp: 131.49808 | Base: 1.58972 | Loss_Pred: 1.36514 (+14.1%) | Elapsed: 02:22:06 | Time: 19:05:37 | LR_m: 0.00027 | Scale: 0.3826
+Epoch 013 | Loss_BackProp: 131.01795 | Base: 1.58971 | Loss_Pred: 1.36150 (+14.4%) | Elapsed: 02:32:34 | Time: 19:16:05 | LR_m: 0.00026 | Scale: 0.3962
+Epoch 014 | Loss_BackProp: 130.59749 | Base: 1.58975 | Loss_Pred: 1.35832 (+14.6%) | Elapsed: 02:42:56 | Time: 19:26:27 | LR_m: 0.00026 | Scale: 0.4091
+Epoch 015 | Loss_BackProp: 130.17339 | Base: 1.58977 | Loss_Pred: 1.35497 (+14.8%) | Elapsed: 02:53:20 | Time: 19:36:50 | LR_m: 0.00025 | Scale: 0.4212
+Epoch 016 | Loss_BackProp: 129.77474 | Base: 1.58971 | Loss_Pred: 1.35186 (+15.0%) | Elapsed: 03:03:45 | Time: 19:47:15 | LR_m: 0.00025 | Scale: 0.4327
+Epoch 017 | Loss_BackProp: 129.43659 | Base: 1.58974 | Loss_Pred: 1.34926 (+15.1%) | Elapsed: 03:14:09 | Time: 19:57:40 | LR_m: 0.00024 | Scale: 0.4435
+Epoch 018 | Loss_BackProp: 129.16205 | Base: 1.58969 | Loss_Pred: 1.34731 (+15.2%) | Elapsed: 03:24:35 | Time: 20:08:05 | LR_m: 0.00023 | Scale: 0.4535
+Epoch 019 | Loss_BackProp: 128.83822 | Base: 1.58972 | Loss_Pred: 1.34461 (+15.4%) | Elapsed: 03:34:58 | Time: 20:18:29 | LR_m: 0.00023 | Scale: 0.4630
+Epoch 020 | Loss_BackProp: 128.56508 | Base: 1.58969 | Loss_Pred: 1.34250 (+15.5%) | Elapsed: 03:45:59 | Time: 20:29:30 | LR_m: 0.00022 | Scale: 0.4721
+Epoch 021 | Loss_BackProp: 128.33514 | Base: 1.58968 | Loss_Pred: 1.34079 (+15.7%) | Elapsed: 03:56:52 | Time: 20:40:23 | LR_m: 0.00021 | Scale: 0.4806
+Epoch 022 | Loss_BackProp: 128.10771 | Base: 1.58972 | Loss_Pred: 1.33890 (+15.8%) | Elapsed: 04:07:16 | Time: 20:50:47 | LR_m: 0.00021 | Scale: 0.4884
+Epoch 023 | Loss_BackProp: 127.89298 | Base: 1.58969 | Loss_Pred: 1.33729 (+15.9%) | Elapsed: 04:17:44 | Time: 21:01:15 | LR_m: 0.00020 | Scale: 0.4958
+Epoch 024 | Loss_BackProp: 127.70484 | Base: 1.58977 | Loss_Pred: 1.33567 (+16.0%) | Elapsed: 04:29:28 | Time: 21:12:59 | LR_m: 0.00019 | Scale: 0.5029
+Epoch 025 | Loss_BackProp: 127.50323 | Base: 1.58969 | Loss_Pred: 1.33405 (+16.1%) | Elapsed: 04:41:43 | Time: 21:25:13 | LR_m: 0.00019 | Scale: 0.5094
+Epoch 026 | Loss_BackProp: 127.37319 | Base: 1.58971 | Loss_Pred: 1.33304 (+16.1%) | Elapsed: 04:55:06 | Time: 21:38:37 | LR_m: 0.00018 | Scale: 0.5156
+Epoch 027 | Loss_BackProp: 127.18727 | Base: 1.58968 | Loss_Pred: 1.33149 (+16.2%) | Elapsed: 05:08:48 | Time: 21:52:19 | LR_m: 0.00017 | Scale: 0.5213
+Epoch 028 | Loss_BackProp: 127.06971 | Base: 1.58971 | Loss_Pred: 1.33060 (+16.3%) | Elapsed: 05:22:37 | Time: 22:06:08 | LR_m: 0.00016 | Scale: 0.5268
+Epoch 029 | Loss_BackProp: 126.91533 | Base: 1.58967 | Loss_Pred: 1.32932 (+16.4%) | Elapsed: 05:34:40 | Time: 22:18:11 | LR_m: 0.00016 | Scale: 0.5318
+Epoch 030 | Loss_BackProp: 126.79057 | Base: 1.58973 | Loss_Pred: 1.32816 (+16.5%) | Elapsed: 05:45:50 | Time: 22:29:21 | LR_m: 0.00015 | Scale: 0.5366
+
+Try  to train for 120 steps ... also ending lr lowered from 1e-5 to 1e-6
+

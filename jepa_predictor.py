@@ -15,7 +15,7 @@ import numpy as np
 LATENT_DIR = "world_model_latents"
 BATCH_SIZE = 2  # [B] - Keep small to spare your RAM
 ACCUM_BACKWARDS_STEPS = 16
-EPOCHS = 60
+EPOCHS = 120
 LR = 3e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
@@ -163,7 +163,7 @@ def train():
 
     # Anneal both schedules
     sched_predictor = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt_predictor, T_max=EPOCHS, eta_min=1e-5
+        opt_predictor, T_max=EPOCHS, eta_min=1e-6
     )
 
     l1_criterion = nn.L1Loss()
@@ -171,9 +171,7 @@ def train():
     # criterion_inv = nn.SmoothL1Loss(beta=0.1)
 
     start_training_time = time.time()
-    print(
-        f"🚀 Training on {len(dataset)} transitions using {DEVICE} with Inverse Cycle..."
-    )
+    print(f"🚀 Training on {len(dataset)} transitions using {DEVICE}")
 
     best_pred_imp = 0
     for ep in range(EPOCHS):
@@ -264,8 +262,17 @@ def train():
             (avg_base_pure_diff - avg_loss_pred_only) / avg_base_pure_diff
         ) * 100
         if pred_imp > best_pred_imp:
+            checkpoint = {
+                "epoch": ep,
+                "model_state": model.state_dict(),
+                "optimizer_state": opt_predictor.state_dict(),
+                "scheduler_state": sched_predictor.state_dict(),  # Keeps the Cosine curve correct
+                "best_pred_imp": best_pred_imp,
+                "pred_imp": pred_imp,
+                "scale": model.delta_scale.item(),  # Useful for logging later
+            }
+
             best_pred_imp = pred_imp
-            checkpoint = {"model_state": model.state_dict()}
             pct_str = f"{pred_imp:.2f}".replace(".", "_") + "_pct"
             save_path = os.path.join("predictor_weights", f"world_model_{pct_str}.pth")
 
