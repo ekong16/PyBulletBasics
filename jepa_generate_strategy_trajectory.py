@@ -26,88 +26,17 @@ def get_latent_from_file(file):
     return ret
 
 
-TARGET_LATENT = get_latent_from_file("poses/plank_pose.jpg")
+TARGET_LATENT = get_latent_from_file("poses/standing_pose.jpg")
+PLANK_LATENT = get_latent_from_file("poses/plank_pose.jpg")
 START_LATENT = get_latent_from_file("poses/lying_pose.jpg")
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
 
 
-def generate_dream_sequence(
-    model, z_start, z_goal, num_samples=1000, horizon=6, device=DEVICE
-):
-    model.eval()
-    sequence = []
-    mse_log = []
-
-    # Standardize input shape
-    z_step = (
-        z_start.unsqueeze(0).to(device) if z_start.dim() == 2 else z_start.to(device)
-    )
-    z_goal = z_goal.to(device)
-
-    action_dist = Uniform(low=-1.0, high=1.0)
-    for step in range(horizon):
-        start_time = time.time()
-        all_actions = action_dist.sample((num_samples, 28)).to(DEVICE)
-        all_preds = []
-
-        print(f"Step {step + 1} | Processing {num_samples} samples 1-by-1...")
-
-        for i in range(num_samples):
-            # 1. Grab exactly one action: [1, 28]
-            action_single = all_actions[i : i + 1]
-
-            with torch.no_grad():
-                # Prediction for a batch of 1: [1, 2048, 1024]
-                with torch.autocast(device_type=DEVICE_STR, dtype=torch.float16):
-                    # Start a timer
-
-                    pred = model(z_step, action_single)
-
-                    # if i % (num_samples / 2) == 0:
-                    #     print(f"Sample {i} inference time: {elapsed:.4f} seconds")
-
-                    all_preds.append(pred)
-
-            # 2. THE MAC SPECIAL: Flush memory every 100 iterations to prevent the 7.8GiB crash
-            if i % 100 == 0:
-                torch.mps.empty_cache()
-
-        # 3. Combine: [1000, 2048, 1024]
-        z_next_preds = torch.cat(all_preds, dim=0)
-
-        # 4. METRICS
-        # l1_diff = torch.abs(z_next_preds - z_goal)
-        # l1_dists = l1_diff.sum(dim=(1, 2))
-
-        mse_diff = (z_next_preds - z_goal) ** 2
-        mse_dists = mse_diff.mean(dim=(1, 2))
-
-        # 5. WINNER
-        best_idx = torch.argmin(mse_dists)
-        best_mse = mse_dists[best_idx].item()
-
-        z_step = z_next_preds[best_idx].unsqueeze(0)
-        sequence.append(all_actions[best_idx].cpu().numpy())
-        mse_log.append(best_mse)
-
-        torch.mps.empty_cache()
-        step_elapsed = time.time() - start_time
-
-        # print(
-        #     f"   Step {step + 1} Complete | BEST L1: {best_l1:.2f} | BEST MSE: {best_mse:.6f}"
-        # )
-        print(
-            f"Step {step + 1} Complete | BEST MSE: {best_mse:.6f} | Step total time for {num_samples} samples: {step_elapsed:.4f} seconds"
-        )
-
-    return sequence, mse_log
-
-
 def generate_dream_sequence_cem(
     model,
     z_start,
-    z_goal,
+    z_goals,  # <--- CHANGED THIS TO A LIST
     num_samples=100,
     horizon=6,
     cem_iters=5,
@@ -123,18 +52,24 @@ def generate_dream_sequence_cem(
     # Expected target shape: [1, 2048, 1024]
     if z_start.dim() == 2:
         z_start = z_start.unsqueeze(0)
-    if z_goal.dim() == 2:
-        z_goal = z_goal.unsqueeze(0)
 
     z_step = z_start.to(device)
-    z_goal = z_goal.to(device)
+    assert z_step.shape == (1, 2048, 1024), f"z_step shape wrong: {z_step.shape}"
+
+    z_step = z_start.to(device)
 
     assert z_step.shape == (1, 2048, 1024), f"z_step shape wrong: {z_step.shape}"
-    assert z_goal.shape == (1, 2048, 1024), f"z_goal shape wrong: {z_goal.shape}"
 
     for step in range(horizon):
         start_time = time.time()
         print(f"\n🚀 --- Step {step + 1}/{horizon} ---")
+
+        current_goal = z_goals[step].to(device)
+        if current_goal.dim() == 2:
+            current_goal = current_goal.unsqueeze(0)
+        assert current_goal.shape == (1, 2048, 1024), (
+            f"current_goal shape wrong: {current_goal.shape}"
+        )
 
         # Start with a wide search area
         mean = torch.zeros(28, device=device)
@@ -203,7 +138,7 @@ def generate_dream_sequence_cem(
 
                 # --- THE MEMORY SAVER: Score Immediately ---
                 # Calculate the L1 loss for just this tiny chunk
-                chunk_l1_diffs = torch.abs(pred_chunk - z_goal)
+                chunk_l1_diffs = torch.abs(pred_chunk - current_goal)
                 chunk_l1_scores = torch.mean(chunk_l1_diffs, dim=(1, 2))
 
                 # ASSERT 3: Check Chunk Score Shape
@@ -288,7 +223,7 @@ def generate_dream_sequence_cem(
         assert chosen_z_next.shape == (1, 2048, 1024), "Chosen state shape wrong!"
 
         # Log metrics and prepare for next real-world step
-        final_step_l1 = torch.mean(torch.abs(chosen_z_next - z_goal)).item()
+        final_step_l1 = torch.mean(torch.abs(chosen_z_next - current_goal)).item()
 
         # Save the action to our sequence list (strip the batch dimension to make it just 28 numbers)
         sequence.append(best_action.squeeze(0).cpu().numpy())
@@ -309,7 +244,7 @@ def generate_dream_sequence_cem(
 def get_multi_trial_sequence_to_disk(
     model,
     z_start,
-    z_goal,
+    z_goals,  # <--- CHANGED HERE
     num_samples=100,
     horizon=6,
     cem_iters=5,
@@ -321,7 +256,7 @@ def get_multi_trial_sequence_to_disk(
     all_l1 = []
     for i in range(num_trials):
         sequence, l1_loss = generate_dream_sequence_cem(
-            model, z_start, z_goal, num_samples, horizon, cem_iters, elite_frac, device
+            model, z_start, z_goals, num_samples, horizon, cem_iters, elite_frac, device
         )
         all_sequences.append(sequence)
         all_l1.append(l1_loss)
@@ -335,15 +270,25 @@ def get_multi_trial_sequence_to_disk(
 
 if __name__ == "__main__":
     model = WorldPredictorPro().to(DEVICE)
-    model.load_state_dict(torch.load("world_model_masked.pth")["model_state"])
+    model.load_state_dict(
+        torch.load("world_model_masked.pth", map_location="cpu")["model_state"]
+    )
+
+    # --- YOUR NEW WAYPOINT RECIPE ---
+    # Step 1: Aim for Plank
+    # Step 2: Aim for Plank
+    # Step 3: Aim for Stand
+    # Step 4: Aim for Stand
+    TARGET_TRAJECTORY = [PLANK_LATENT, PLANK_LATENT, TARGET_LATENT, TARGET_LATENT]
+
     get_multi_trial_sequence_to_disk(
         model,
         START_LATENT,
-        TARGET_LATENT,
+        TARGET_TRAJECTORY,
         num_samples=500,
-        horizon=3,
+        horizon=4,  # <--- MUST MATCH THE LENGTH OF TARGET_TRAJECTORY
         cem_iters=6,
         elite_frac=0.10,
-        num_trials=2,
+        num_trials=3,
         device=DEVICE,
     )

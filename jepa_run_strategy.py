@@ -53,7 +53,7 @@ def save_trial_mp4(
             # --- HUD OVERLAY ---
             draw_text(
                 bgr,
-                f"TRIAL: {trial_idx:02d} | STEP: {step_idx + 1}/6 | FPS: 8.0",
+                f"TRIAL: {trial_idx:02d} | STEP: {step_idx + 1}/{len(actions)} | FPS: 8.0",
                 (10, 20),
                 (0, 215, 255),
             )
@@ -101,7 +101,7 @@ if __name__ == "__main__":
             trial_video_frames = []
 
             for step_idx, action in enumerate(trial_actions):
-                print(f"   Step {step_idx + 1}/6...")
+                print(f"   Step {step_idx + 1}/{len(trial_actions)}...")
                 step_video = collector.execute_and_record(action)
                 trial_video_frames.append(step_video)
 

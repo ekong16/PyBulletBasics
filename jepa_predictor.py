@@ -19,6 +19,8 @@ EPOCHS = 120
 LR = 3e-4
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
+CHECKPOINT_DIR = "predictor_weights"
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
 
 # --- 2. DATA LOADER ---
@@ -274,7 +276,7 @@ def train():
 
             best_pred_imp = pred_imp
             pct_str = f"{pred_imp:.2f}".replace(".", "_") + "_pct"
-            save_path = os.path.join("predictor_weights", f"world_model_{pct_str}.pth")
+            save_path = os.path.join(CHECKPOINT_DIR, f"world_model_{pct_str}.pth")
 
             torch.save(checkpoint, save_path)
             # print(f"🌟 New Best! Saved weights at {pred_imp:+.1f}% improvement.")
