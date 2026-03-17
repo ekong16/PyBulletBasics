@@ -65,10 +65,11 @@ TEST_POSES = {
     "Plank": "poses/plank_pose.jpg",
     "Starting Line (Lying Down)": "poses/lying_pose.jpg",
     "No ROBOT": "poses/no_robot.jpg",
+    "Athletic low stand": "poses/athletic_low_stand.jpg",
 }
 
 # ==============================================================================
-# 3. COMPUTE ENERGY DISTANCES (MSE)
+# 3. COMPUTE ENERGY DISTANCES (L1)
 # ==============================================================================
 print(f"\nExtracting Latent Encoding from: {TARGET_POSE}")
 img = Image.open(TARGET_POSE).convert("RGB")
@@ -82,7 +83,7 @@ if target_grid is None:
 print(f"Encoded Target Shape: {target_grid.shape}")
 
 print("📊 --- V-JEPA 2 RAW LATENT LEADERBOARD ---")
-print("Using Mean Squared Error (MSE) - Lower is closer to Target...\n")
+print("Using L1 - Lower is closer to Target...\n")
 
 results = {}
 
@@ -96,13 +97,13 @@ for pose_name, filepath in TEST_POSES.items():
     current_grid = my_jepa_model.get_latent(video_clip, verbose=True)
 
     if current_grid is not None:
-        mse_dist = my_jepa_model.compute_mse(target_grid, current_grid)
-        results[pose_name] = mse_dist
+        l1_dist = my_jepa_model.compute_l1(target_grid, current_grid)
+        results[pose_name] = l1_dist
 
 sorted_results = sorted(results.items(), key=lambda item: item[1])
 
 print("\n" + "=" * 60)
-for rank, (name, mse) in enumerate(sorted_results, 1):
+for rank, (name, l1) in enumerate(sorted_results, 1):
     print(f"{rank}. {name}")
-    print(f"   MSE Energy Distance: {mse:.6f}")
+    print(f"   L1 Energy Distance: {l1:.6f}")
 print("=" * 60 + "\n")

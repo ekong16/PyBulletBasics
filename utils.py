@@ -102,6 +102,9 @@ class JEPAEngine:
     def compute_mse(self, current, target):
         return F.mse_loss(current, target).item()
 
+    def compute_l1(self, current, traget):
+        return torch.mean(torch.abs(current - traget)).item()
+
 
 class PyBulletCamera:
     def __init__(

@@ -70,7 +70,7 @@ POSE_CONFIG_DEFAULT = {
     "left_ankle": (0, 0, 0),
 }
 
-POSE_CONFIG = {
+POSE_CONFIG_KNEETUCK = {
     "chest": (0, 0, 0),
     "neck": (0, 0, 0),
     "right_shoulder": (0, 0, 0),
@@ -85,6 +85,24 @@ POSE_CONFIG = {
     "left_hip": (0, -30, 150),
     "left_knee": -150,
     "left_ankle": (0, 0, 0),
+}
+
+# Athletic low stand
+POSE_CONFIG = {
+    "chest": (0, 0, 0),
+    "neck": (0, 0, 0),
+    "right_shoulder": (-20, 0, 30),
+    "right_elbow": 0,
+    "right_wrist": (0, 0, 0),
+    "left_shoulder": (20, 0, 30),
+    "left_elbow": 0,
+    "left_wrist": (0, 0, 0),
+    "right_hip": (-20, 0, 60),
+    "right_knee": -60,
+    "right_ankle": (0, 0, 20),
+    "left_hip": (20, 0, 60),
+    "left_knee": -60,
+    "left_ankle": (0, 0, 20),
 }
 
 # --- 2. LOAD ASSETS ---

@@ -27,7 +27,8 @@ def get_latent_from_file(file):
 
 
 TARGET_LATENT = get_latent_from_file("poses/standing_pose.jpg")
-PLANK_LATENT = get_latent_from_file("poses/plank_pose.jpg")
+LOW_STAND_LATENT = get_latent_from_file("poses/athletic_low_stand.jpg")
+KNEE_TUCK = get_latent_from_file("poses/knee_tuck.jpg")
 START_LATENT = get_latent_from_file("poses/lying_pose.jpg")
 DEVICE = torch.device("mps")
 DEVICE_STR = "mps"
@@ -271,7 +272,9 @@ def get_multi_trial_sequence_to_disk(
 if __name__ == "__main__":
     model = WorldPredictorPro().to(DEVICE)
     model.load_state_dict(
-        torch.load("world_model_masked.pth", map_location="cpu")["model_state"]
+        torch.load("predictor_weights/world_model_18_76_pct.pth", map_location="cpu")[
+            "model_state"
+        ]
     )
 
     # --- YOUR NEW WAYPOINT RECIPE ---
@@ -279,16 +282,25 @@ if __name__ == "__main__":
     # Step 2: Aim for Plank
     # Step 3: Aim for Stand
     # Step 4: Aim for Stand
-    TARGET_TRAJECTORY = [PLANK_LATENT, PLANK_LATENT, TARGET_LATENT, TARGET_LATENT]
+    TARGET_TRAJECTORY = [
+        KNEE_TUCK,
+        KNEE_TUCK,
+        KNEE_TUCK,
+        LOW_STAND_LATENT,
+        LOW_STAND_LATENT,
+        LOW_STAND_LATENT,
+        LOW_STAND_LATENT,
+        LOW_STAND_LATENT,
+    ]
 
     get_multi_trial_sequence_to_disk(
         model,
         START_LATENT,
         TARGET_TRAJECTORY,
-        num_samples=500,
-        horizon=4,  # <--- MUST MATCH THE LENGTH OF TARGET_TRAJECTORY
-        cem_iters=6,
-        elite_frac=0.10,
-        num_trials=3,
+        num_samples=200,
+        horizon=8,  # <--- MUST MATCH THE LENGTH OF TARGET_TRAJECTORY
+        cem_iters=5,
+        elite_frac=0.15,
+        num_trials=2,
         device=DEVICE,
     )

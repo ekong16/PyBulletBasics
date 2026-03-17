@@ -45,7 +45,7 @@ class JEPADataset(Dataset):
 
 # --- 3. THE WORLD PREDICTOR ---
 class WorldPredictorPro(nn.Module):
-    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=256):
+    def __init__(self, latent_dim=1024, action_dim=28, num_tokens=2048, hidden_dim=512):
         super().__init__()
 
         # 1. THE INTERNAL GUARD (Normalization)

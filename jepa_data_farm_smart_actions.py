@@ -48,13 +48,19 @@ def get_smart_action(dim):
     # 2. Sample from Normal Distribution (centered at 0, std 0.5)
     action = np.random.normal(loc=0.0, scale=0.5, size=dim).astype(np.float32)
 
-    # 3. Inject 'Joint Sparsity' (Randomly zero out 30-70% of joints)
-    sparsity_factor = random.uniform(0.3, 0.7)
-    mask = (np.random.rand(dim) > sparsity_factor).astype(np.float32)
-    action *= mask
+    # 3. Randomly zero certain actions
+    num_to_zero = random.randint(1, 28)
+    # Shuffle the list of joint IDs and pick the first 'num_to_zero'
+    indices = list(range(dim))
+    random.shuffle(indices)
+    zero_indices = indices[:num_to_zero]
 
+    # 5. KILL THEM
+    action[zero_indices] = 0.0
+
+    action = np.clip(action, -1.0, 1.0)
     # 4. Final Clamp to stay within the simulator's torque limits [-1, 1]
-    return np.clip(action, -1.0, 1.0)
+    return action
 
 
 def resetJointMotorsAndState(humanoid_id, target_pos, target_orn):
@@ -118,6 +124,7 @@ def save_debug_mp4(video_0, action, video_1, episode, step, folder):
     # Summarize the 28-dim array so it doesn't clutter the screen
     act_norm = np.linalg.norm(action)
     act_max = np.max(np.abs(action))
+    # action_text = f"Action Norm: {act_norm:.2f} | Max Action: {act_max:.2f} | FPS: 8.0"
     action_text = f"Action Norm: {act_norm:.2f} | Max Action: {act_max:.2f} | FPS: 8.0"
 
     # --- TEXT RENDERER ---
@@ -151,7 +158,7 @@ def save_debug_mp4(video_0, action, video_1, episode, step, folder):
             canvas, f"State 1 (After) | Step: {step}", (266, 22), color=(0, 215, 255)
         )
         # Bottom Right: Episode Counter
-        draw_text(canvas, f"Episode: {episode:03d}", (266, 245), color=(255, 255, 255))
+        draw_text(canvas, f"Episode: {episode:03d}", (366, 245), color=(255, 255, 255))
 
         out.write(canvas)
 
@@ -257,15 +264,14 @@ if __name__ == "__main__":
             )
 
             # 3. Random Settle Window (Gravity takes over)
-            settle_steps = random.randint(20, 150)
+            settle_steps = random.randint(20, 512)
             for _ in range(settle_steps):
                 p.stepSimulation()
 
             # --- THE BASELINE STATE (Video 0) ---
             # Record the momentum of the crash by applying ZERO torque for 160 steps
-            initial_action = np.random.uniform(-1, 1, size=collector.action_dim).astype(
-                np.float32
-            )
+            initial_action = get_smart_action(collector.action_dim)
+
             current_state_video = collector.execute_and_record(initial_action)
 
             # --- THE CONTINUOUS CHAIN ---
