@@ -272,7 +272,7 @@ def get_multi_trial_sequence_to_disk(
 if __name__ == "__main__":
     model = WorldPredictorPro().to(DEVICE)
     model.load_state_dict(
-        torch.load("predictor_weights/world_model_18_76_pct.pth", map_location="cpu")[
+        torch.load("predictor_weights/world_model_24_95_pct.pth", map_location="cpu")[
             "model_state"
         ]
     )
@@ -284,23 +284,21 @@ if __name__ == "__main__":
     # Step 4: Aim for Stand
     TARGET_TRAJECTORY = [
         KNEE_TUCK,
-        KNEE_TUCK,
-        KNEE_TUCK,
         LOW_STAND_LATENT,
-        LOW_STAND_LATENT,
-        LOW_STAND_LATENT,
-        LOW_STAND_LATENT,
-        LOW_STAND_LATENT,
+        TARGET_LATENT,
+        TARGET_LATENT,
+        TARGET_LATENT,
+        TARGET_LATENT,
     ]
 
     get_multi_trial_sequence_to_disk(
         model,
         START_LATENT,
         TARGET_TRAJECTORY,
-        num_samples=200,
-        horizon=8,  # <--- MUST MATCH THE LENGTH OF TARGET_TRAJECTORY
+        num_samples=1000,
+        horizon=6,  # <--- MUST MATCH THE LENGTH OF TARGET_TRAJECTORY
         cem_iters=5,
         elite_frac=0.15,
-        num_trials=2,
+        num_trials=10,
         device=DEVICE,
     )
